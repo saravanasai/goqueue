@@ -1,5 +1,5 @@
 package job
 
-type Job struct {
-	id int32
+type Job interface {
+	Handle() error
 }

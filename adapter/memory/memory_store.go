@@ -19,7 +19,7 @@ func (store *InMemoryStore) Push(queue string, job job.Job) error {
 }
 
 func (store *InMemoryStore) Pop(queue string) (job.Job, error) {
-	return job.Job{}, nil
+	return nil, nil
 }
 
 func (store *InMemoryStore) Ack(jobID string) error {
