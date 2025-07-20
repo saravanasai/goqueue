@@ -20,11 +20,15 @@ type Config struct {
 	DriverConfig    any           // e.g. *RedisConfig, *SQLiteConfig
 }
 
-type InMemoryConfig struct{}
-
-func NewInMemoryConfig() *InMemoryConfig {
-
-	return &InMemoryConfig{}
+func NewInMemoryConfig() Config {
+	return Config{
+		Driver:          DriverMemory,
+		QueueName:       "default",
+		RetryCount:      3,
+		RetryDelay:      time.Second,
+		ShutdownTimeout: 5 * time.Second,
+		DriverConfig:    nil,
+	}
 }
 
 func (c Config) Validate() error {

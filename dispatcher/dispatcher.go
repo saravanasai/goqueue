@@ -15,5 +15,6 @@ func NewDispatcher(store adapter.Store) *Dispatcher {
 }
 
 func (ds *Dispatcher) Dispatch(queueName string, job job.Job) error {
+	ds.store.Push(queueName, job)
 	return nil
 }
