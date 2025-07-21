@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"fmt"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -15,47 +16,40 @@ func generateID() string {
 }
 
 type queue struct {
-	jobs []job.QueuedJob
-	head int
+	jobChannel chan job.QueuedJob
 }
 type InMemoryStore struct {
-	queue map[string]*queue
+	Queue map[string]*queue
 }
 
 func NewInMemoryStore() *InMemoryStore {
-	return &InMemoryStore{queue: make(map[string]*queue)}
+	return &InMemoryStore{Queue: make(map[string]*queue)}
 }
 
 func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
-	q, ok := store.queue[queueName]
+	q, ok := store.Queue[queueName]
 	if !ok {
-		q = &queue{jobs: make([]job.QueuedJob, 0), head: 0}
-		store.queue[queueName] = q
+		q = &queue{make(chan job.QueuedJob, 1000)}
+		store.Queue[queueName] = q
 	}
 	meta := job.QueuedJob{
 		Job:        jb,
-		ID:         generateID(), // implement this
+		ID:         generateID(),
 		EnqueuedAt: time.Now(),
 		RetryCount: 0,
 	}
-	q.jobs = append(q.jobs, meta)
+	q.jobChannel <- meta
 	return nil
 }
 
-func (store *InMemoryStore) Pop(queueName string) (job.Job, error) {
-	q, ok := store.queue[queueName]
-	if !ok || q.head >= len(q.jobs) {
-		return nil, nil
+func (store *InMemoryStore) Pop(queueName string) (job.QueuedJob, error) {
+
+	q, ok := store.Queue[queueName]
+	if !ok {
+		return job.QueuedJob{}, fmt.Errorf("queue not found")
 	}
-	// Get the queuedJob at the head
-	meta := q.jobs[q.head]
-	q.head++
-	// Compact the slice if head is large to avoid memory leak
-	if q.head > 100 && q.head > len(q.jobs)/2 {
-		q.jobs = q.jobs[q.head:]
-		q.head = 0
-	}
-	return meta.Job, nil
+	job := <-q.jobChannel
+	return job, nil
 
 }
 
