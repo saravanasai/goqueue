@@ -19,21 +19,27 @@ func NewWorker(store adapter.Store, config config.Config) *Worker {
 
 func (w *Worker) Start(ctx context.Context) {
 
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				job, err := w.store.Pop(w.config.QueueName)
-				if err != nil {
-					log.Println("pop error:", err)
-					continue
+	if w.config.Driver == config.DriverMemory {
+		for i := 0; i < w.config.NumWorkers; i++ {
+			go func(workerID int) {
+				for {
+					select {
+					case <-ctx.Done():
+						log.Printf("Worker %d shutting down", workerID)
+						return
+					default:
+						job, err := w.store.Pop(w.config.QueueName)
+						if err != nil {
+							log.Printf("Worker %d pop error: %v", workerID, err)
+							continue
+						}
+						job.Job.Process(ctx)
+					}
 				}
-				job.Job.Process(ctx)
-			}
+			}(i)
 		}
-	}()
+	}
+
 }
 
 func (w *Worker) Shutdown(ctx context.Context) error {

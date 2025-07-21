@@ -18,6 +18,7 @@ type Config struct {
 	RetryDelay      time.Duration // delay between retries
 	ShutdownTimeout time.Duration // max time to wait during graceful shutdown
 	DriverConfig    any           // e.g. *RedisConfig, *SQLiteConfig
+	NumWorkers      int
 }
 
 func NewInMemoryConfig() Config {
@@ -28,6 +29,7 @@ func NewInMemoryConfig() Config {
 		RetryDelay:      time.Second,
 		ShutdownTimeout: 5 * time.Second,
 		DriverConfig:    nil,
+		NumWorkers:      2,
 	}
 }
 
