@@ -68,7 +68,6 @@ func (rs *RedisStore) Pop(queueName string) (job.Job, error) {
 	// BLPop blocks until a job is available or context is canceled
 	result, err := rs.client.BLPop(ctx, 0*time.Second, queueName).Result()
 	if err == redis.Nil {
-		// Queue is empty, no job available
 		return nil, nil
 	}
 	if err != nil {
@@ -82,7 +81,6 @@ func (rs *RedisStore) Pop(queueName string) (job.Job, error) {
 	payload := result[1]
 	fmt.Println("Payload:", payload)
 
-	// First unmarshal into RedisQueuedJob to get metadata and JobName
 	var queued job.RedisQueuedJob
 	if err := json.Unmarshal([]byte(payload), &queued); err != nil {
 		return nil, fmt.Errorf("unmarshal RedisQueuedJob error: %w", err)

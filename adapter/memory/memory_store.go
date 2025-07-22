@@ -42,14 +42,14 @@ func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
 	return nil
 }
 
-func (store *InMemoryStore) Pop(queueName string) (job.QueuedJob, error) {
+func (store *InMemoryStore) Pop(queueName string) (job.Job, error) {
 
 	q, ok := store.Queue[queueName]
 	if !ok {
-		return job.QueuedJob{}, fmt.Errorf("queue not found")
+		return nil, fmt.Errorf("queue not found")
 	}
 	job := <-q.jobChannel
-	return job, nil
+	return job.Job, nil
 
 }
 

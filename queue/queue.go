@@ -30,8 +30,8 @@ func NewQueue(cfg config.Config) (*Queue, error) {
 	var store adapter.Store
 
 	switch cfg.Driver {
-	// case config.DriverMemory:
-	// 	store = memory.NewInMemoryStore()
+	case config.DriverMemory:
+		store = memory.NewInMemoryStore()
 	case config.DriverRedis:
 		redisCfg, ok := cfg.DriverConfig.(config.RedisConfig)
 		if !ok {
@@ -53,7 +53,6 @@ func NewQueue(cfg config.Config) (*Queue, error) {
 	return q, nil
 }
 
-// Dispatch pushes a job to the store for processing.
 func (q *Queue) Dispatch(job job.Job) error {
 	return q.dispatcher.Dispatch(q.config.QueueName, job)
 }
@@ -62,7 +61,6 @@ func (q *Queue) StartWorkers(ctx context.Context) {
 	q.worker.Start(ctx)
 }
 
-// Shutdown gracefully stops the consumer and cleans up.
 func (q *Queue) Shutdown(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, q.config.ShutdownTimeout)
 	defer cancel()
