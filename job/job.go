@@ -7,7 +7,13 @@ import (
 )
 
 type Job interface {
-	Process(ctx context.Context)
+	Process(ctx context.Context) error
+}
+
+type JobContext struct {
+	Job       Job
+	JobID     string
+	QueueName string
 }
 
 type QueuedJob struct {

@@ -55,7 +55,7 @@ func NewRedisConfig(address string, password string, db int) Config {
 		RetryDelay:      time.Second,
 		ShutdownTimeout: 5 * time.Second,
 		DriverConfig:    RedisConfig{Addr: address, Password: password, Db: db},
-		NumWorkers:      2,
+		NumWorkers:      1,
 	}
 }
 

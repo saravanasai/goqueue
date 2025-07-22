@@ -2,18 +2,10 @@ package memory
 
 import (
 	"fmt"
-	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/saravanasai/goqueue/job"
 )
-
-var idCounter uint64
-
-func generateID() string {
-	return strconv.FormatUint(atomic.AddUint64(&idCounter, 1), 10)
-}
 
 type queue struct {
 	jobChannel chan job.QueuedJob
@@ -42,18 +34,18 @@ func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
 	return nil
 }
 
-func (store *InMemoryStore) Pop(queueName string) (job.Job, error) {
+func (store *InMemoryStore) Pop(queueName string) (job.JobContext, error) {
 
 	q, ok := store.Queue[queueName]
 	if !ok {
-		return nil, fmt.Errorf("queue not found")
+		return job.JobContext{}, fmt.Errorf("queue not found")
 	}
-	job := <-q.jobChannel
-	return job.Job, nil
+	popedJob := <-q.jobChannel
+	return job.JobContext{Job: popedJob.Job, JobID: popedJob.ID, QueueName: queueName}, nil
 
 }
 
-func (store *InMemoryStore) Ack(jobID string) error {
+func (store *InMemoryStore) Ack(queueName string, payload string) error {
 	return nil
 }
 

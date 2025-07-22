@@ -12,6 +12,8 @@ import (
 	"github.com/saravanasai/goqueue/job"
 )
 
+const processingQueueName = "processing:"
+
 type RedisStore struct {
 	client *redis.Client
 }
@@ -34,7 +36,7 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 		t = t.Elem()
 	}
 	jobName := t.Name()
-	fmt.Println("Raw JB:", jb)
+
 	// Marshal the actual job separately
 	jobPayload, err := json.Marshal(jb)
 	if err != nil {
@@ -58,53 +60,64 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 		return fmt.Errorf("failed to marshal job metadata: %w", err)
 	}
 
-	fmt.Println("Marshal Payload:", string(payload))
-	return rs.client.LPush(context.Background(), queueName, payload).Err()
+	ctx := context.Background()
+	indexKey := "job_index:" + queueName
+	rs.client.HSet(ctx, indexKey, meta.ID, payload).Err()
+	return rs.client.LPush(ctx, queueName, payload).Err()
+
 }
 
-func (rs *RedisStore) Pop(queueName string) (job.Job, error) {
+func (rs *RedisStore) Pop(queueName string) (job.JobContext, error) {
 	ctx := context.Background()
 
-	// BLPop blocks until a job is available or context is canceled
-	result, err := rs.client.BLPop(ctx, 0*time.Second, queueName).Result()
+	processingQueue := processingQueueName + queueName
+
+	// BRPopLPush blocks until a job is available or context is canceled
+	payload, err := rs.client.BRPopLPush(ctx, queueName, processingQueue, 0).Result()
 	if err == redis.Nil {
-		return nil, nil
+		return job.JobContext{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("redis BLPop error: %w", err)
+		return job.JobContext{}, fmt.Errorf("redis BRPopLPush error: %w", err)
 	}
-
-	if len(result) < 2 {
-		return nil, fmt.Errorf("unexpected result from BLPop: %v", result)
-	}
-
-	payload := result[1]
-	fmt.Println("Payload:", payload)
 
 	var queued job.RedisQueuedJob
 	if err := json.Unmarshal([]byte(payload), &queued); err != nil {
-		return nil, fmt.Errorf("unmarshal RedisQueuedJob error: %w", err)
+		return job.JobContext{}, fmt.Errorf("unmarshal RedisQueuedJob error: %w", err)
 	}
 
-	// Get actual job constructor from registry
 	newJobFunc, ok := registry.GetFromRegistery(queued.JobName)
 	if !ok {
-		return nil, fmt.Errorf("no job registered with name: %s", queued.JobName)
+		return job.JobContext{}, fmt.Errorf("no job registered with name: %s", queued.JobName)
 	}
 
-	// Instantiate and unmarshal actual job
 	jobInstance := newJobFunc()
 	if err := json.Unmarshal(queued.Job, jobInstance); err != nil {
-		return nil, fmt.Errorf("failed to decode job into type %s: %w", queued.JobName, err)
+		return job.JobContext{}, fmt.Errorf("failed to decode job into type %s: %w", queued.JobName, err)
 	}
 
-	// Return the job instance (which implements job.Job)
-	return jobInstance, nil
+	return job.JobContext{Job: jobInstance, JobID: queued.ID, QueueName: queueName}, nil
 }
 
-func (rs *RedisStore) Ack(jobID string) error {
-	return nil
+func (rs *RedisStore) Ack(queueName string, jobID string) error {
+	ctx := context.Background()
+	processingQueue := processingQueueName + queueName
+	indexKey := "job_index:" + queueName
+
+	// Get actual payload using job ID
+	payload, err := rs.client.HGet(ctx, indexKey, jobID).Result()
+	if err != nil {
+		return fmt.Errorf("job payload not found for ID %s: %w", jobID, err)
+	}
+
+	// Remove from processing queue
+	if _, err := rs.client.LRem(ctx, processingQueue, 1, payload).Result(); err != nil {
+		return fmt.Errorf("failed to LREM payload: %w", err)
+	}
+	// Remove from index
+	return rs.client.HDel(ctx, indexKey, jobID).Err()
 }
+
 func (rs *RedisStore) Retry(job job.Job, delay time.Duration) error {
 	return nil
 }

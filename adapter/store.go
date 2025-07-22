@@ -8,7 +8,7 @@ import (
 
 type Store interface {
 	Push(queueName string, job job.Job) error
-	Pop(queueName string) (job.Job, error)
-	Ack(jobID string) error
+	Pop(queueName string) (job.JobContext, error)
+	Ack(queueName string, payload string) error
 	Retry(job job.Job, delay time.Duration) error
 }
