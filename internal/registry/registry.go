@@ -28,7 +28,7 @@ func Register(name string, constructor Constructor) {
 }
 
 // Get returns a constructor for the given job name
-func Get(name string) (Constructor, bool) {
+func GetFromRegistery(name string) (Constructor, bool) {
 	mu.RLock()
 	defer mu.RUnlock()
 

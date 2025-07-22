@@ -2,6 +2,7 @@ package job
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -14,4 +15,12 @@ type QueuedJob struct {
 	ID         string
 	EnqueuedAt time.Time
 	RetryCount int
+}
+
+type RedisQueuedJob struct {
+	Job        json.RawMessage `json:"job"`
+	ID         string          `json:"id"`
+	JobName    string          `json:"job_name"`
+	EnqueuedAt time.Time       `json:"enqueued_at"`
+	RetryCount int             `json:"retry_count"`
 }

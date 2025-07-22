@@ -3,6 +3,7 @@ package queue
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/adapter/memory"
@@ -29,8 +30,14 @@ func NewQueue(cfg config.Config) (*Queue, error) {
 	var store adapter.Store
 
 	switch cfg.Driver {
-	case config.DriverMemory:
-		store = memory.NewInMemoryStore()
+	// case config.DriverMemory:
+	// 	store = memory.NewInMemoryStore()
+	case config.DriverRedis:
+		redisCfg, ok := cfg.DriverConfig.(config.RedisConfig)
+		if !ok {
+			log.Fatal("Invalid Redis config provided")
+		}
+		store = memory.NewRedisStore(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
 
 	default:
 		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)

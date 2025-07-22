@@ -19,7 +19,7 @@ func NewWorker(store adapter.Store, config config.Config) *Worker {
 
 func (w *Worker) Start(ctx context.Context) {
 
-	if w.config.Driver == config.DriverMemory {
+	if w.config.Driver == config.DriverMemory || w.config.Driver == config.DriverRedis {
 		for i := 0; i < w.config.NumWorkers; i++ {
 			go func(workerID int) {
 				for {
@@ -33,7 +33,8 @@ func (w *Worker) Start(ctx context.Context) {
 							log.Printf("Worker %d pop error: %v", workerID, err)
 							continue
 						}
-						job.Job.Process(ctx)
+
+						job.Process(ctx)
 					}
 				}
 			}(i)
