@@ -18,15 +18,10 @@ type RedisStore struct {
 	client *redis.Client
 }
 
-func NewRedisStore(addr, password string, db int) *RedisStore {
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: password,
-		DB:       db,
-	})
+func NewRedisStore(client *redis.Client) *RedisStore {
 
 	return &RedisStore{
-		client: rdb,
+		client: client,
 	}
 }
 

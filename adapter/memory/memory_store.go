@@ -14,7 +14,7 @@ type InMemoryStore struct {
 	Queue map[string]*queue
 }
 
-func NewInMemoryStore() *InMemoryStore {
+func NewInMemoryStore(queueName string) *InMemoryStore {
 	return &InMemoryStore{Queue: make(map[string]*queue)}
 }
 

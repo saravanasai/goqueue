@@ -9,17 +9,18 @@ import (
 )
 
 type Worker struct {
-	store  adapter.Store
-	config config.Config
+	store     adapter.Store
+	config    config.Config
+	queueName string
 }
 
-func NewWorker(store adapter.Store, config config.Config) *Worker {
-	return &Worker{store: store, config: config}
+func NewWorker(store adapter.Store, config config.Config, queueName string) *Worker {
+	return &Worker{store: store, config: config, queueName: queueName}
 }
 
-func (w *Worker) Start(ctx context.Context) {
+func (w *Worker) Start(ctx context.Context, noOfWorkers int) {
 	if w.config.Driver == config.DriverMemory || w.config.Driver == config.DriverRedis {
-		for i := 0; i < w.config.NumWorkers; i++ {
+		for i := 0; i < noOfWorkers; i++ {
 			go func(workerID int) {
 				for {
 					select {
@@ -27,14 +28,14 @@ func (w *Worker) Start(ctx context.Context) {
 						log.Printf("Worker %d shutting down", workerID)
 						return
 					default:
-						job, err := w.store.Pop(w.config.QueueName)
+						job, err := w.store.Pop(w.queueName)
 						if err != nil {
 							log.Printf("Worker %d pop error: %v", workerID, err)
 							continue
 						}
 						isJobCompleted := job.Job.Process(ctx)
 						if isJobCompleted == nil {
-							isAck := w.store.Ack(w.config.QueueName, job.JobID)
+							isAck := w.store.Ack(w.queueName, job.JobID)
 							log.Printf("Done %d Job: %v", job.JobID, isAck)
 						}
 					}
