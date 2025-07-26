@@ -37,6 +37,9 @@ func (w *Worker) Start(ctx context.Context, noOfWorkers int) error {
 		return fmt.Errorf("unsupported driver: %s", w.config.Driver)
 	}
 
+	if noOfWorkers > w.config.MaxWorkers {
+		return fmt.Errorf("requested workers (%d) exceeds maximum allowed (%d)", noOfWorkers, w.config.MaxWorkers)
+	}
 	log.Printf("Starting %d workers for queue '%s'", noOfWorkers, w.queueName)
 
 	for i := 0; i < noOfWorkers; i++ {

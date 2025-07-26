@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"runtime"
 )
 
 const (
@@ -17,6 +18,7 @@ type DriverConfig interface {
 type Config struct {
 	Driver       string
 	DriverConfig DriverConfig
+	MaxWorkers   int
 }
 
 type RedisConfig struct {
@@ -29,10 +31,16 @@ func (r RedisConfig) Type() string {
 	return "redis"
 }
 
+func sensibleDefaultMaxWorkers() int {
+
+	return runtime.NumCPU() * 2
+}
+
 func NewInMemoryConfig() Config {
 	return Config{
 		Driver:       DriverMemory,
 		DriverConfig: nil,
+		MaxWorkers:   sensibleDefaultMaxWorkers(),
 	}
 }
 
@@ -44,10 +52,21 @@ func NewRedisConfig(address string, password string, db int) Config {
 			Password: password,
 			Db:       db,
 		},
+		MaxWorkers: sensibleDefaultMaxWorkers(),
 	}
 }
 
+func (c Config) WithMaxWorkers(maxWorkers int) Config {
+	c.MaxWorkers = maxWorkers
+	return c
+}
+
 func (c Config) Validate() error {
+
+	if c.MaxWorkers <= 0 {
+		return errors.New("MaxWorkers must be greater than 0")
+	}
+
 	switch c.Driver {
 	case DriverMemory:
 		return nil
