@@ -36,7 +36,7 @@ func (w *Worker) Start(ctx context.Context, noOfWorkers int) {
 						isJobCompleted := job.Job.Process(ctx)
 						if isJobCompleted == nil {
 							isAck := w.store.Ack(w.queueName, job.JobID)
-							log.Printf("Done %d Job: %v", job.JobID, isAck)
+							log.Printf("Done %s Job: %v", job.JobID, isAck)
 						}
 					}
 				}

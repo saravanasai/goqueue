@@ -12,15 +12,16 @@ import (
 
 // Job is the interface clients must implement for their jobs.
 type Job = job.Job
+type Queue = queue.Queue
 
 const DefaultShutdownTimeout = 5 * time.Second
 
-func NewQueueWithDefaults(queueName string, cfg config.Config) (*queue.Queue, error) {
+func NewQueueWithDefaults(queueName string, cfg config.Config) (*Queue, error) {
 	return NewQueue(queueName, cfg, DefaultShutdownTimeout)
 }
 
 // NewQueue creates a new queue instance with the given config.
-func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration) (*queue.Queue, error) {
+func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration) (*Queue, error) {
 	return queue.NewQueue(queueName, cfg, shutdownTimeout)
 }
 
