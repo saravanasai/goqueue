@@ -31,10 +31,6 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		return nil, err
 	}
 
-	if shutdownTimeout == 0 {
-		shutdownTimeout = 5 * time.Second
-	}
-
 	var store adapter.Store
 
 	switch cfg.Driver {
@@ -59,7 +55,7 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		dispatcher:      dispatcher.NewDispatcher(store),
 		worker:          worker.NewWorker(store, cfg, queueName),
 		queueName:       queueName,
-		ShutdownTimeout: 10 * time.Second,
+		ShutdownTimeout: shutdownTimeout,
 	}
 
 	return q, nil
