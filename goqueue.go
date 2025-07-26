@@ -39,3 +39,7 @@ func Dispatch(q *queue.Queue, payload job.Job) error {
 func StartWorker(q *queue.Queue, ctx context.Context, count int) {
 	q.StartWorkers(ctx, count)
 }
+
+func Shutdown(q *queue.Queue, ctx context.Context) error {
+	return q.Shutdown(ctx)
+}

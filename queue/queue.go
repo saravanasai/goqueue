@@ -72,5 +72,7 @@ func (q *Queue) StartWorkers(ctx context.Context, count int) {
 func (q *Queue) Shutdown(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, q.ShutdownTimeout)
 	defer cancel()
+
+	log.Printf("Shutting down queue '%s'", q.queueName)
 	return q.worker.Shutdown(shutdownCtx)
 }
