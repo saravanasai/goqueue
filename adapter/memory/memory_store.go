@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/job"
 )
 
@@ -11,11 +12,12 @@ type queue struct {
 	jobChannel chan job.QueuedJob
 }
 type InMemoryStore struct {
-	Queue map[string]*queue
+	Queue  map[string]*queue
+	Config config.Config
 }
 
-func NewInMemoryStore(queueName string) *InMemoryStore {
-	return &InMemoryStore{Queue: make(map[string]*queue)}
+func NewInMemoryStore(queueName string, config config.Config) *InMemoryStore {
+	return &InMemoryStore{Queue: make(map[string]*queue), Config: config}
 }
 
 func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
@@ -51,4 +53,15 @@ func (store *InMemoryStore) Ack(queueName string, payload string) error {
 
 func (store *InMemoryStore) Retry(job job.Job, delay time.Duration) error {
 	return nil
+}
+
+func (store *InMemoryStore) EnqueueMetrics(metrics config.JobMetrics) error {
+	if store.Config.OnJobComplete != nil {
+		store.Config.OnJobComplete(metrics)
+	}
+	return nil
+}
+
+func (store *InMemoryStore) DequeueMetrics(queueName string) (config.JobMetrics, error) {
+	return config.JobMetrics{}, nil
 }

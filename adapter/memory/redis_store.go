@@ -8,20 +8,27 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/registry"
 	"github.com/saravanasai/goqueue/job"
 )
 
-const processingQueueName = "processing:"
+const (
+	processingQueueName   = "processing:"
+	MetricsQueueSuffix    = ":metrics"
+	MetricsAckQueueSuffix = ":metrics:ack"
+)
 
 type RedisStore struct {
 	client *redis.Client
+	config config.Config
 }
 
-func NewRedisStore(client *redis.Client) *RedisStore {
+func NewRedisStore(client *redis.Client, config config.Config) *RedisStore {
 
 	return &RedisStore{
 		client: client,
+		config: config,
 	}
 }
 
@@ -115,4 +122,43 @@ func (rs *RedisStore) Ack(queueName string, jobID string) error {
 
 func (rs *RedisStore) Retry(job job.Job, delay time.Duration) error {
 	return nil
+}
+
+func (r *RedisStore) EnqueueMetrics(metrics config.JobMetrics) error {
+	// Create metrics queue name
+	metricsQueueName := metrics.QueueName + MetricsQueueSuffix
+	// Serialize to JSON
+	jsonData, err := json.Marshal(metrics)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metrics data: %w", err)
+	}
+
+	// Push to Redis list (non-blocking)
+	ctx := context.Background()
+	if err := r.client.LPush(ctx, metricsQueueName, jsonData).Err(); err != nil {
+		return fmt.Errorf("failed to enqueue metrics: %w", err)
+	}
+
+	return nil
+}
+
+func (rs *RedisStore) DequeueMetrics(queueName string) (config.JobMetrics, error) {
+	ctx := context.Background()
+	processingQueue := queueName + MetricsAckQueueSuffix
+	sourceQueueName := queueName + MetricsQueueSuffix
+	// BRPopLPush blocks until a job is available or context is canceled
+	payload, err := rs.client.BRPopLPush(ctx, sourceQueueName, processingQueue, 0).Result()
+	if err == redis.Nil {
+		return config.JobMetrics{}, nil
+	}
+	if err != nil {
+		return config.JobMetrics{}, fmt.Errorf("redis BRPopLPush error: %w", err)
+	}
+
+	var metrics config.JobMetrics
+	if err := json.Unmarshal([]byte(payload), &metrics); err != nil {
+		return config.JobMetrics{}, fmt.Errorf("unmarshal RedisQueuedJob error: %w", err)
+	}
+
+	return metrics, nil
 }

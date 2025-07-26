@@ -35,7 +35,7 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 
 	switch cfg.Driver {
 	case config.DriverMemory:
-		store = memory.NewInMemoryStore(queueName)
+		store = memory.NewInMemoryStore(queueName, cfg)
 	case config.DriverRedis:
 		redisCfg, ok := cfg.DriverConfig.(config.RedisConfig)
 		if !ok {
@@ -43,7 +43,7 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		}
 		redisMgr := manager.NewRedisClientManager()
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
-		store = memory.NewRedisStore(client)
+		store = memory.NewRedisStore(client, cfg)
 
 	default:
 		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)

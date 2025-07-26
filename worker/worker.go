@@ -50,6 +50,8 @@ func (w *Worker) Start(ctx context.Context, noOfWorkers int) error {
 		go w.workerLoop(ctx, i)
 	}
 
+	go w.startMetricsWorker(ctx)
+
 	return nil
 
 }
@@ -109,11 +111,50 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 			log.Printf("Worker %d failed to ack job %s: %v", workerID, job.JobID, ackErr)
 		} else {
 			log.Printf("Worker %d completed job %s in %v", workerID, job.JobID, processingTime)
+			// Handle metrics with clean struct
+			if w.config.OnJobComplete != nil {
+				metrics := config.JobMetrics{
+					QueueName: w.queueName,
+					JobID:     job.JobID,
+					Duration:  processingTime,
+					Error:     err,
+					Timestamp: time.Now(),
+				}
+				w.enqueueMetrics(metrics)
+			}
 		}
 	} else {
 		// Job failed - log error (retry logic can be added later)
 		log.Printf("Worker %d failed to process job %s: %v", workerID, job.JobID, err)
 	}
+}
+
+func (w *Worker) enqueueMetrics(metrics config.JobMetrics) {
+	go func() {
+		if err := w.store.EnqueueMetrics(metrics); err != nil {
+			log.Printf("Failed to enqueue metrics for job %s: %v", metrics.JobID, err)
+		}
+	}()
+}
+
+func (w *Worker) startMetricsWorker(ctx context.Context) {
+	w.wg.Add(1)
+	go func() {
+		defer w.wg.Done()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				jobCtx, err := w.store.DequeueMetrics(w.queueName)
+				fmt.Println("Metrics worker processing job:", jobCtx.JobID)
+				if (err == nil && jobCtx != config.JobMetrics{}) {
+					fmt.Println("Metrics worker processing job:inside")
+					w.config.OnJobComplete(jobCtx)
+				}
+			}
+		}
+	}()
 }
 
 func (w *Worker) Shutdown(ctx context.Context) error {

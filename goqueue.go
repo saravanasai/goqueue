@@ -13,6 +13,7 @@ import (
 // Job is the interface clients must implement for their jobs.
 type Job = job.Job
 type Queue = queue.Queue
+type JobMetrics = config.JobMetrics
 
 const DefaultShutdownTimeout = 5 * time.Second
 

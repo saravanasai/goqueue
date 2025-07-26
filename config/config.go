@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"runtime"
+	"time"
 )
 
 const (
@@ -15,11 +16,24 @@ type DriverConfig interface {
 	Type() string
 }
 
+// Metrics event struct
+type JobMetrics struct {
+	QueueName string
+	JobID     string
+	Duration  time.Duration
+	Error     error
+	Timestamp time.Time
+}
+
+// Clean callback signature with struct
+type MetricsCallback func(metrics JobMetrics)
+
 type Config struct {
 	Driver           string
 	DriverConfig     DriverConfig
 	MaxWorkers       int
 	ConcurrencyLimit int
+	OnJobComplete    MetricsCallback
 }
 
 type RedisConfig struct {
@@ -47,6 +61,7 @@ func NewInMemoryConfig() Config {
 		DriverConfig:     nil,
 		MaxWorkers:       sensibleDefaultMaxWorkers(),
 		ConcurrencyLimit: sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:    nil,
 	}
 }
 
@@ -60,6 +75,7 @@ func NewRedisConfig(address string, password string, db int) Config {
 		},
 		MaxWorkers:       sensibleDefaultMaxWorkers(),
 		ConcurrencyLimit: sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:    nil,
 	}
 }
 
@@ -70,6 +86,11 @@ func (c Config) WithMaxWorkers(maxWorkers int) Config {
 
 func (c Config) WithConcurrencyLimit(limit int) Config {
 	c.ConcurrencyLimit = limit
+	return c
+}
+
+func (c Config) WithMetricsCallback(callback MetricsCallback) Config {
+	c.OnJobComplete = callback
 	return c
 }
 
