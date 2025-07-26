@@ -16,9 +16,10 @@ type DriverConfig interface {
 }
 
 type Config struct {
-	Driver       string
-	DriverConfig DriverConfig
-	MaxWorkers   int
+	Driver           string
+	DriverConfig     DriverConfig
+	MaxWorkers       int
+	ConcurrencyLimit int
 }
 
 type RedisConfig struct {
@@ -36,11 +37,16 @@ func sensibleDefaultMaxWorkers() int {
 	return runtime.NumCPU() * 2
 }
 
+func sensibleDefaultConcurrencyLimit() int {
+	return runtime.NumCPU() * 4
+}
+
 func NewInMemoryConfig() Config {
 	return Config{
-		Driver:       DriverMemory,
-		DriverConfig: nil,
-		MaxWorkers:   sensibleDefaultMaxWorkers(),
+		Driver:           DriverMemory,
+		DriverConfig:     nil,
+		MaxWorkers:       sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit: sensibleDefaultConcurrencyLimit(),
 	}
 }
 
@@ -52,7 +58,8 @@ func NewRedisConfig(address string, password string, db int) Config {
 			Password: password,
 			Db:       db,
 		},
-		MaxWorkers: sensibleDefaultMaxWorkers(),
+		MaxWorkers:       sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit: sensibleDefaultConcurrencyLimit(),
 	}
 }
 
@@ -61,10 +68,19 @@ func (c Config) WithMaxWorkers(maxWorkers int) Config {
 	return c
 }
 
+func (c Config) WithConcurrencyLimit(limit int) Config {
+	c.ConcurrencyLimit = limit
+	return c
+}
+
 func (c Config) Validate() error {
 
 	if c.MaxWorkers <= 0 {
 		return errors.New("MaxWorkers must be greater than 0")
+	}
+
+	if c.ConcurrencyLimit <= 0 {
+		return errors.New("ConcurrencyLimit must be greater than 0")
 	}
 
 	switch c.Driver {

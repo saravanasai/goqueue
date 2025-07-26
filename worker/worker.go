@@ -11,6 +11,7 @@ import (
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/job"
+	"golang.org/x/sync/semaphore"
 )
 
 type Worker struct {
@@ -20,14 +21,16 @@ type Worker struct {
 	wg             sync.WaitGroup
 	shutdownCh     chan struct{}
 	isShuttingDown int32
+	concurrencySem *semaphore.Weighted
 }
 
 func NewWorker(store adapter.Store, config config.Config, queueName string) *Worker {
 	return &Worker{
-		store:      store,
-		config:     config,
-		queueName:  queueName,
-		shutdownCh: make(chan struct{}),
+		store:          store,
+		config:         config,
+		queueName:      queueName,
+		shutdownCh:     make(chan struct{}),
+		concurrencySem: semaphore.NewWeighted(int64(config.ConcurrencyLimit)),
 	}
 }
 
@@ -90,6 +93,12 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 }
 
 func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.JobContext) {
+
+	if err := w.concurrencySem.Acquire(ctx, 1); err != nil {
+		log.Printf("Worker %d failed to acquire concurrency semaphore for job %s: %v", workerID, job.JobID, err)
+		return
+	}
+	defer w.concurrencySem.Release(1)
 
 	startTime := time.Now()
 	err := job.Job.Process(ctx)
