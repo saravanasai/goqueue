@@ -10,27 +10,33 @@ import (
 
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/config"
+	configuration "github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/job"
 	"golang.org/x/sync/semaphore"
 )
 
 type Worker struct {
 	store          adapter.Store
-	config         config.Config
+	config         configuration.Config
 	queueName      string
 	wg             sync.WaitGroup
 	shutdownCh     chan struct{}
 	isShuttingDown int32
 	concurrencySem *semaphore.Weighted
+	metricsChannel chan configuration.JobMetrics
 }
 
-func NewWorker(store adapter.Store, config config.Config, queueName string) *Worker {
+func NewWorker(store adapter.Store, config configuration.Config, queueName string) *Worker {
+
+	metricsBufferSize := calculateMetricsBufferSize(config)
+
 	return &Worker{
 		store:          store,
 		config:         config,
 		queueName:      queueName,
 		shutdownCh:     make(chan struct{}),
 		concurrencySem: semaphore.NewWeighted(int64(config.ConcurrencyLimit)),
+		metricsChannel: make(chan configuration.JobMetrics, metricsBufferSize),
 	}
 }
 
@@ -130,11 +136,11 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 }
 
 func (w *Worker) enqueueMetrics(metrics config.JobMetrics) {
-	go func() {
-		if err := w.store.EnqueueMetrics(metrics); err != nil {
-			log.Printf("Failed to enqueue metrics for job %s: %v", metrics.JobID, err)
-		}
-	}()
+	select {
+	case w.metricsChannel <- metrics:
+	default:
+		log.Printf("Metrics channel full, dropping metrics for job %s", metrics.JobID)
+	}
 }
 
 func (w *Worker) startMetricsWorker(ctx context.Context) {
@@ -145,6 +151,10 @@ func (w *Worker) startMetricsWorker(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
+			case metrics := <-w.metricsChannel:
+				if err := w.store.EnqueueMetrics(metrics); err != nil {
+					log.Printf("Failed to enqueue metrics: %v", err)
+				}
 			default:
 				jobCtx, err := w.store.DequeueMetrics(w.queueName)
 				fmt.Println("Metrics worker processing job:", jobCtx.JobID)
@@ -187,4 +197,27 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 		log.Printf("Shutdown timeout reached for queue '%s', some workers may be terminated", w.queueName)
 		return ctx.Err()
 	}
+}
+
+func calculateMetricsBufferSize(config config.Config) int {
+	// Constants for buffer size calculation
+	const (
+		baseBufferSize  = 100   // Minimum base buffer size
+		bufferPerWorker = 25    // Buffer slots per potential worker
+		minBufferSize   = 100   // Minimum total buffer size
+		maxBufferSize   = 50000 // Maximum total buffer size to prevent excessive memory usage
+	)
+
+	// Calculate buffer size based on max workers configuration
+	calculatedSize := baseBufferSize + (config.MaxWorkers * bufferPerWorker)
+
+	// Ensure the buffer size is within reasonable bounds
+	if calculatedSize < minBufferSize {
+		calculatedSize = minBufferSize
+	}
+	if calculatedSize > maxBufferSize {
+		calculatedSize = maxBufferSize
+	}
+
+	return calculatedSize
 }

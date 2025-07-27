@@ -16,7 +16,6 @@ type DriverConfig interface {
 	Type() string
 }
 
-// Metrics event struct
 type JobMetrics struct {
 	QueueName string
 	JobID     string

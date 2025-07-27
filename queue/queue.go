@@ -23,6 +23,7 @@ type Queue struct {
 	worker          *worker.Worker
 	queueName       string
 	ShutdownTimeout time.Duration
+	cancelFunc      context.CancelFunc
 }
 
 // NewQueue initializes a new Queue instance based on the config.
@@ -33,6 +34,8 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 
 	var store adapter.Store
 
+	queueCtx, queueCancel := context.WithCancel(context.Background())
+
 	switch cfg.Driver {
 	case config.DriverMemory:
 		store = memory.NewInMemoryStore(queueName, cfg)
@@ -42,10 +45,12 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 			log.Fatal("Invalid Redis config provided")
 		}
 		redisMgr := manager.NewRedisClientManager()
+		redisMgr.StartPeriodicHealthCheck(queueCtx)
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
-		store = memory.NewRedisStore(client, cfg)
+		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Password, redisCfg.Db)
 
 	default:
+		queueCancel()
 		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)
 	}
 
@@ -56,6 +61,7 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		worker:          worker.NewWorker(store, cfg, queueName),
 		queueName:       queueName,
 		ShutdownTimeout: shutdownTimeout,
+		cancelFunc:      queueCancel,
 	}
 
 	return q, nil
@@ -69,9 +75,22 @@ func (q *Queue) StartWorkers(ctx context.Context, count int) {
 	q.worker.Start(ctx, count)
 }
 
+func (q *Queue) IsHealthy() bool {
+	if q.config.Driver == config.DriverRedis {
+		if redisStore, ok := q.store.(*memory.RedisStore); ok {
+			return redisStore.IsHealthy()
+		}
+	}
+	return true
+}
+
 func (q *Queue) Shutdown(ctx context.Context) error {
 	shutdownCtx, cancel := context.WithTimeout(ctx, q.ShutdownTimeout)
 	defer cancel()
+
+	if q.cancelFunc != nil {
+		q.cancelFunc()
+	}
 
 	log.Printf("Shutting down queue '%s'", q.queueName)
 	return q.worker.Shutdown(shutdownCtx)

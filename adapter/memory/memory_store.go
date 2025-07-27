@@ -65,3 +65,7 @@ func (store *InMemoryStore) EnqueueMetrics(metrics config.JobMetrics) error {
 func (store *InMemoryStore) DequeueMetrics(queueName string) (config.JobMetrics, error) {
 	return config.JobMetrics{}, nil
 }
+
+func (store *InMemoryStore) IsHealthy() bool {
+	return true
+}

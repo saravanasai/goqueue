@@ -14,4 +14,5 @@ type Store interface {
 	Retry(job job.Job, delay time.Duration) error
 	EnqueueMetrics(metrics config.JobMetrics) error
 	DequeueMetrics(queueName string) (config.JobMetrics, error)
+	IsHealthy() bool
 }

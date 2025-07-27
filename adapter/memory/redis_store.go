@@ -9,6 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/saravanasai/goqueue/config"
+	"github.com/saravanasai/goqueue/internal/manager"
 	"github.com/saravanasai/goqueue/internal/registry"
 	"github.com/saravanasai/goqueue/job"
 )
@@ -20,19 +21,28 @@ const (
 )
 
 type RedisStore struct {
-	client *redis.Client
-	config config.Config
+	client       *redis.Client
+	config       config.Config
+	redisManager *manager.RedisClientManager
+	redisKey     string
 }
 
-func NewRedisStore(client *redis.Client, config config.Config) *RedisStore {
+func NewRedisStore(client *redis.Client, config config.Config, redisManager *manager.RedisClientManager, addr string, password string, db int) *RedisStore {
 
 	return &RedisStore{
-		client: client,
-		config: config,
+		client:       client,
+		config:       config,
+		redisManager: redisManager,
+		redisKey:     redisManager.Key(addr, password, db),
 	}
 }
 
 func (rs *RedisStore) Push(queueName string, jb job.Job) error {
+
+	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
+		return fmt.Errorf("redis instance is currently unhealthy, cannot push job")
+	}
+
 	t := reflect.TypeOf(jb)
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
@@ -161,4 +171,8 @@ func (rs *RedisStore) DequeueMetrics(queueName string) (config.JobMetrics, error
 	}
 
 	return metrics, nil
+}
+
+func (r *RedisStore) IsHealthy() bool {
+	return r.redisManager.IsHealthy(r.redisKey)
 }
