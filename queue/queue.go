@@ -11,6 +11,7 @@ import (
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/dispatcher"
 	"github.com/saravanasai/goqueue/internal/manager"
+	"github.com/saravanasai/goqueue/internal/stats"
 	"github.com/saravanasai/goqueue/job"
 	"github.com/saravanasai/goqueue/worker"
 )
@@ -24,6 +25,7 @@ type Queue struct {
 	queueName       string
 	ShutdownTimeout time.Duration
 	cancelFunc      context.CancelFunc
+	statsCollector  *stats.Collector
 }
 
 // NewQueue initializes a new Queue instance based on the config.
@@ -54,14 +56,22 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)
 	}
 
+	var statsCollector *stats.Collector
+	if cfg.StatsEnabled {
+		statsOptions := stats.DefaultStatsOptions()
+		statsOptions.Enabled = true
+		statsCollector = stats.NewCollector(statsOptions)
+	}
+
 	q := &Queue{
 		config:          cfg,
 		store:           store,
-		dispatcher:      dispatcher.NewDispatcher(store),
-		worker:          worker.NewWorker(store, cfg, queueName),
+		dispatcher:      dispatcher.NewDispatcher(store, statsCollector),
+		worker:          worker.NewWorker(store, cfg, queueName, statsCollector),
 		queueName:       queueName,
 		ShutdownTimeout: shutdownTimeout,
 		cancelFunc:      queueCancel,
+		statsCollector:  statsCollector,
 	}
 
 	return q, nil
@@ -82,6 +92,26 @@ func (q *Queue) IsHealthy() bool {
 		}
 	}
 	return true
+}
+
+func (q *Queue) Stats() stats.QueueStats {
+	if q.statsCollector == nil {
+		return stats.QueueStats{
+			IsHealthy:   q.IsHealthy(),
+			LastUpdated: time.Now(),
+		}
+	}
+
+	return q.statsCollector.GetStats(q.IsHealthy())
+}
+
+func (q *Queue) IsOverloaded() bool {
+	if q.statsCollector == nil {
+		return false
+	}
+
+	stats := q.statsCollector.GetStats(q.IsHealthy())
+	return stats.IsOverloaded
 }
 
 func (q *Queue) Shutdown(ctx context.Context) error {

@@ -108,7 +108,7 @@ func (rs *RedisStore) Pop(queueName string) (job.JobContext, error) {
 		return job.JobContext{}, fmt.Errorf("failed to decode job into type %s: %w", queued.JobName, err)
 	}
 
-	return job.JobContext{Job: jobInstance, JobID: queued.ID, QueueName: queueName}, nil
+	return job.JobContext{Job: jobInstance, JobID: queued.ID, QueueName: queueName, EnqueuedAt: queued.EnqueuedAt}, nil
 }
 
 func (rs *RedisStore) Ack(queueName string, jobID string) error {

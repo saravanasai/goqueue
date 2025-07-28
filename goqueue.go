@@ -6,6 +6,7 @@ import (
 
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/registry"
+	"github.com/saravanasai/goqueue/internal/stats"
 	"github.com/saravanasai/goqueue/job"
 	"github.com/saravanasai/goqueue/queue"
 )
@@ -14,6 +15,7 @@ import (
 type Job = job.Job
 type Queue = queue.Queue
 type JobMetrics = config.JobMetrics
+type QueueStats = stats.QueueStats
 
 const DefaultShutdownTimeout = 5 * time.Second
 
@@ -39,4 +41,12 @@ func StartWorker(q *queue.Queue, ctx context.Context, count int) {
 
 func Shutdown(q *queue.Queue, ctx context.Context) error {
 	return q.Shutdown(ctx)
+}
+
+func GetQueueStats(q *queue.Queue) QueueStats {
+	return q.Stats()
+}
+
+func IsQueueOverloaded(q *queue.Queue) bool {
+	return q.IsOverloaded()
 }

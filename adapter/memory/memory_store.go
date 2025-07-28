@@ -43,7 +43,7 @@ func (store *InMemoryStore) Pop(queueName string) (job.JobContext, error) {
 		return job.JobContext{}, fmt.Errorf("queue not found")
 	}
 	popedJob := <-q.jobChannel
-	return job.JobContext{Job: popedJob.Job, JobID: popedJob.ID, QueueName: queueName}, nil
+	return job.JobContext{Job: popedJob.Job, JobID: popedJob.ID, QueueName: queueName, EnqueuedAt: popedJob.EnqueuedAt}, nil
 
 }
 

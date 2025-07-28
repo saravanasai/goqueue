@@ -11,6 +11,7 @@ import (
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/config"
 	configuration "github.com/saravanasai/goqueue/config"
+	"github.com/saravanasai/goqueue/internal/stats"
 	"github.com/saravanasai/goqueue/job"
 	"golang.org/x/sync/semaphore"
 )
@@ -24,9 +25,10 @@ type Worker struct {
 	isShuttingDown int32
 	concurrencySem *semaphore.Weighted
 	metricsChannel chan configuration.JobMetrics
+	statsCollector *stats.Collector
 }
 
-func NewWorker(store adapter.Store, config configuration.Config, queueName string) *Worker {
+func NewWorker(store adapter.Store, config configuration.Config, queueName string, statsCollector *stats.Collector) *Worker {
 
 	metricsBufferSize := calculateMetricsBufferSize(config)
 
@@ -37,6 +39,7 @@ func NewWorker(store adapter.Store, config configuration.Config, queueName strin
 		shutdownCh:     make(chan struct{}),
 		concurrencySem: semaphore.NewWeighted(int64(config.ConcurrencyLimit)),
 		metricsChannel: make(chan configuration.JobMetrics, metricsBufferSize),
+		statsCollector: statsCollector,
 	}
 }
 
@@ -108,9 +111,20 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 	}
 	defer w.concurrencySem.Release(1)
 
+	isCollectorEnabled := w.config.StatsEnabled && w.statsCollector != nil
+
+	if isCollectorEnabled {
+		w.statsCollector.RecordDequeue(job.EnqueuedAt)
+	}
+
 	startTime := time.Now()
 	err := job.Job.Process(ctx)
 	processingTime := time.Since(startTime)
+	success := err == nil
+
+	if isCollectorEnabled {
+		w.statsCollector.RecordComplete(processingTime, success)
+	}
 
 	if err == nil {
 		if ackErr := w.store.Ack(w.queueName, job.JobID); ackErr != nil {

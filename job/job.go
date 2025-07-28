@@ -11,9 +11,10 @@ type Job interface {
 }
 
 type JobContext struct {
-	Job       Job
-	JobID     string
-	QueueName string
+	Job        Job
+	JobID      string
+	QueueName  string
+	EnqueuedAt time.Time
 }
 
 type QueuedJob struct {

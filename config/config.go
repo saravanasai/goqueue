@@ -33,6 +33,7 @@ type Config struct {
 	MaxWorkers       int
 	ConcurrencyLimit int
 	OnJobComplete    MetricsCallback
+	StatsEnabled     bool
 }
 
 type RedisConfig struct {
@@ -76,6 +77,11 @@ func NewRedisConfig(address string, password string, db int) Config {
 		ConcurrencyLimit: sensibleDefaultConcurrencyLimit(),
 		OnJobComplete:    nil,
 	}
+}
+
+func (c Config) WithStats(enabled bool) Config {
+	c.StatsEnabled = enabled
+	return c
 }
 
 func (c Config) WithMaxWorkers(maxWorkers int) Config {
