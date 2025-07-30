@@ -3,13 +3,13 @@ package queue
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/adapter/memory"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/dispatcher"
+	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/internal/manager"
 	"github.com/saravanasai/goqueue/internal/stats"
 	"github.com/saravanasai/goqueue/job"
@@ -26,6 +26,7 @@ type Queue struct {
 	ShutdownTimeout time.Duration
 	cancelFunc      context.CancelFunc
 	statsCollector  *stats.Collector
+	logger          logger.Logger
 }
 
 // NewQueue initializes a new Queue instance based on the config.
@@ -35,21 +36,23 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 	}
 
 	var store adapter.Store
-
+	logger := logger.NewZapLogger()
 	queueCtx, queueCancel := context.WithCancel(context.Background())
 
 	switch cfg.Driver {
 	case config.DriverMemory:
-		store = memory.NewInMemoryStore(queueName, cfg)
+		store = memory.NewInMemoryStore(queueName, cfg, logger)
 	case config.DriverRedis:
 		redisCfg, ok := cfg.DriverConfig.(config.RedisConfig)
 		if !ok {
-			log.Fatal("Invalid Redis config provided")
+
+			logger.Error("Invalid Redis config provided")
+			panic("Invalid Redis config provided")
 		}
-		redisMgr := manager.NewRedisClientManager()
+		redisMgr := manager.NewRedisClientManager(logger)
 		redisMgr.StartPeriodicHealthCheck(queueCtx)
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
-		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Password, redisCfg.Db)
+		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Password, redisCfg.Db, logger)
 
 	default:
 		queueCancel()
@@ -67,11 +70,12 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		config:          cfg,
 		store:           store,
 		dispatcher:      dispatcher.NewDispatcher(store, statsCollector),
-		worker:          worker.NewWorker(store, cfg, queueName, statsCollector),
+		worker:          worker.NewWorker(store, cfg, queueName, statsCollector, logger),
 		queueName:       queueName,
 		ShutdownTimeout: shutdownTimeout,
 		cancelFunc:      queueCancel,
 		statsCollector:  statsCollector,
+		logger:          logger,
 	}
 
 	return q, nil
@@ -122,6 +126,6 @@ func (q *Queue) Shutdown(ctx context.Context) error {
 		q.cancelFunc()
 	}
 
-	log.Printf("Shutting down queue '%s'", q.queueName)
+	q.logger.Info("Shutting down queue", "queue", q.queueName)
 	return q.worker.Shutdown(shutdownCtx)
 }

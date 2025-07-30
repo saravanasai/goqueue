@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/saravanasai/goqueue/config"
+	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/job"
 )
 
@@ -14,10 +15,11 @@ type queue struct {
 type InMemoryStore struct {
 	Queue  map[string]*queue
 	Config config.Config
+	Logger logger.Logger
 }
 
-func NewInMemoryStore(queueName string, config config.Config) *InMemoryStore {
-	return &InMemoryStore{Queue: make(map[string]*queue), Config: config}
+func NewInMemoryStore(queueName string, config config.Config, logger logger.Logger) *InMemoryStore {
+	return &InMemoryStore{Queue: make(map[string]*queue), Config: config, Logger: logger}
 }
 
 func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
@@ -40,6 +42,7 @@ func (store *InMemoryStore) Pop(queueName string) (job.JobContext, error) {
 
 	q, ok := store.Queue[queueName]
 	if !ok {
+		store.Logger.Error("queue not found", "queue", queueName)
 		return job.JobContext{}, fmt.Errorf("queue not found")
 	}
 	popedJob := <-q.jobChannel

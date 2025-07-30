@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/saravanasai/goqueue/internal/logger"
 )
 
 type RedisClientManager struct {
@@ -15,13 +16,15 @@ type RedisClientManager struct {
 	clients         map[string]*redis.Client
 	healthStatus    map[string]*atomic.Bool
 	lastHealthCheck map[string]time.Time
+	logger          logger.Logger
 }
 
-func NewRedisClientManager() *RedisClientManager {
+func NewRedisClientManager(logger logger.Logger) *RedisClientManager {
 	return &RedisClientManager{
 		clients:         make(map[string]*redis.Client),
 		healthStatus:    make(map[string]*atomic.Bool),
 		lastHealthCheck: make(map[string]time.Time),
+		logger:          logger,
 	}
 }
 
@@ -106,7 +109,7 @@ func (r *RedisClientManager) checkAllClientsHealth(ctx context.Context) {
 		r.mu.Unlock()
 
 		if !isHealthy {
-			fmt.Printf("Redis client %s is unhealthy: %v\n", key, err)
+			r.logger.Error("Redis client is unhealthy", "key", key, "error", err)
 		}
 
 		pingCancel()

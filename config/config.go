@@ -4,6 +4,8 @@ import (
 	"errors"
 	"runtime"
 	"time"
+
+	"github.com/saravanasai/goqueue/internal/logger"
 )
 
 const (
@@ -100,12 +102,15 @@ func (c Config) WithMetricsCallback(callback MetricsCallback) Config {
 }
 
 func (c Config) Validate() error {
+	zapLogger := logger.NewZapLogger()
 
 	if c.MaxWorkers <= 0 {
+		zapLogger.Error("MaxWorkers must be greater than 0", "MaxWorkers", c.MaxWorkers)
 		return errors.New("MaxWorkers must be greater than 0")
 	}
 
 	if c.ConcurrencyLimit <= 0 {
+		zapLogger.Error("ConcurrencyLimit must be greater than 0", "ConcurrencyLimit", c.ConcurrencyLimit)
 		return errors.New("ConcurrencyLimit must be greater than 0")
 	}
 
@@ -115,6 +120,7 @@ func (c Config) Validate() error {
 	case DriverRedis:
 		return nil
 	default:
+		zapLogger.Error("unsupported driver", "Driver", c.Driver)
 		return errors.New("unsupported driver: " + c.Driver)
 	}
 }
