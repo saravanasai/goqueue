@@ -28,12 +28,13 @@ func NewRedisClientManager(logger logger.Logger) *RedisClientManager {
 	}
 }
 
-func (r *RedisClientManager) Key(addr string, password string, db int) string {
-	return fmt.Sprintf("%s|%s|%d", addr, password, db)
+func (r *RedisClientManager) Key(addr string, db int) string {
+	// Only use address and DB for key, never password
+	return fmt.Sprintf("%s|%d", addr, db)
 }
 
 func (r *RedisClientManager) GetClient(addr, password string, db int) *redis.Client {
-	key := r.Key(addr, password, db)
+	key := r.Key(addr, db)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -77,16 +78,15 @@ func (r *RedisClientManager) StartPeriodicHealthCheck(ctx context.Context) {
 }
 
 func (r *RedisClientManager) checkAllClientsHealth(ctx context.Context) {
-	// Create a copy of all clients to check while minimizing lock time
+
 	clientsToCheck := make(map[string]*redis.Client)
 
 	r.mu.Lock()
 	for key, client := range r.clients {
 		clientsToCheck[key] = client
-		// Initialize health status if it doesn't exist
 		if _, exists := r.healthStatus[key]; !exists {
 			r.healthStatus[key] = &atomic.Bool{}
-			r.healthStatus[key].Store(true) // Assume healthy initially
+			r.healthStatus[key].Store(true)
 		}
 	}
 	r.mu.Unlock()

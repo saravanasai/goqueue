@@ -31,12 +31,14 @@ type Queue struct {
 
 // NewQueue initializes a new Queue instance based on the config.
 func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration) (*Queue, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
 
 	var store adapter.Store
 	logger := logger.NewZapLogger()
+
+	if err := cfg.Validate(logger); err != nil {
+		return nil, err
+	}
+
 	queueCtx, queueCancel := context.WithCancel(context.Background())
 
 	switch cfg.Driver {
@@ -45,14 +47,14 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 	case config.DriverRedis:
 		redisCfg, ok := cfg.DriverConfig.(config.RedisConfig)
 		if !ok {
-
 			logger.Error("Invalid Redis config provided")
-			panic("Invalid Redis config provided")
+			queueCancel()
+			return nil, fmt.Errorf("invalid Redis config provided")
 		}
 		redisMgr := manager.NewRedisClientManager(logger)
 		redisMgr.StartPeriodicHealthCheck(queueCtx)
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
-		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Password, redisCfg.Db, logger)
+		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Db, logger)
 
 	default:
 		queueCancel()

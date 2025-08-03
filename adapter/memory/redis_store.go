@@ -29,13 +29,13 @@ type RedisStore struct {
 	logger       logger.Logger
 }
 
-func NewRedisStore(client *redis.Client, config config.Config, redisManager *manager.RedisClientManager, addr string, password string, db int, logger logger.Logger) *RedisStore {
+func NewRedisStore(client *redis.Client, config config.Config, redisManager *manager.RedisClientManager, addr string, db int, logger logger.Logger) *RedisStore {
 
 	return &RedisStore{
 		client:       client,
 		config:       config,
 		redisManager: redisManager,
-		redisKey:     redisManager.Key(addr, password, db),
+		redisKey:     redisManager.Key(addr, db),
 		logger:       logger,
 	}
 }

@@ -101,16 +101,15 @@ func (c Config) WithMetricsCallback(callback MetricsCallback) Config {
 	return c
 }
 
-func (c Config) Validate() error {
-	zapLogger := logger.NewZapLogger()
+func (c Config) Validate(logger logger.Logger) error {
 
 	if c.MaxWorkers <= 0 {
-		zapLogger.Error("MaxWorkers must be greater than 0", "MaxWorkers", c.MaxWorkers)
+		logger.Error("MaxWorkers must be greater than 0", "MaxWorkers", c.MaxWorkers)
 		return errors.New("MaxWorkers must be greater than 0")
 	}
 
 	if c.ConcurrencyLimit <= 0 {
-		zapLogger.Error("ConcurrencyLimit must be greater than 0", "ConcurrencyLimit", c.ConcurrencyLimit)
+		logger.Error("ConcurrencyLimit must be greater than 0", "ConcurrencyLimit", c.ConcurrencyLimit)
 		return errors.New("ConcurrencyLimit must be greater than 0")
 	}
 
@@ -120,7 +119,7 @@ func (c Config) Validate() error {
 	case DriverRedis:
 		return nil
 	default:
-		zapLogger.Error("unsupported driver", "Driver", c.Driver)
+		logger.Error("unsupported driver", "Driver", c.Driver)
 		return errors.New("unsupported driver: " + c.Driver)
 	}
 }

@@ -18,3 +18,14 @@ func (z *ZapLogger) Info(msg string, fields ...interface{}) {
 func (z *ZapLogger) Error(msg string, fields ...interface{}) {
 	z.sugar.Errorw(msg, fields...)
 }
+
+func (z *ZapLogger) Warn(msg string, fields ...interface{}) {
+	z.sugar.Warnw(msg, fields...)
+}
+
+func (z *ZapLogger) Fatal(msg string, fields ...interface{}) {
+	z.sugar.Fatalw(msg, fields...)
+}
+func (z *ZapLogger) Debug(msg string, fields ...interface{}) {
+	z.sugar.Debugw(msg, fields...)
+}
