@@ -130,35 +130,63 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 		w.statsCollector.RecordDequeue(job.EnqueuedAt)
 	}
 
-	startTime := time.Now()
-	err := job.Job.Process(ctx)
-	processingTime := time.Since(startTime)
-	success := err == nil
+	maxAttempts := w.config.MaxRetryAttempts
+	retryDelay := w.config.RetryDelay
+	exponential := w.config.ExponentialBackoff
 
-	if isCollectorEnabled {
-		w.statsCollector.RecordComplete(processingTime, success)
+	var attempt int
+	var lastErr error
+	for attempt = 1; attempt <= maxAttempts; attempt++ {
+		startTime := time.Now()
+		lastErr = job.Job.Process(ctx)
+		processingTime := time.Since(startTime)
+		success := lastErr == nil
+
+		if isCollectorEnabled {
+			w.statsCollector.RecordComplete(processingTime, success)
+		}
+
+		if success {
+			if ackErr := w.store.Ack(w.queueName, job.JobID); ackErr != nil {
+				w.logger.Error("Failed to ack job", "workerID", workerID, "jobID", job.JobID, "error", ackErr)
+			} else {
+				w.logger.Info("Completed job", "workerID", workerID, "jobID", job.JobID, "duration", processingTime)
+				if w.config.OnJobComplete != nil {
+					metrics := config.JobMetrics{
+						QueueName: w.queueName,
+						JobID:     job.JobID,
+						Duration:  processingTime,
+						Error:     lastErr,
+						Timestamp: time.Now(),
+					}
+					w.enqueueMetrics(metrics)
+				}
+			}
+			return
+		}
+
+		// Job failed, log and retry if attempts remain
+		w.logger.Error("Failed to process job", "workerID", workerID, "jobID", job.JobID, "attempt", attempt, "error", lastErr)
+		if attempt < maxAttempts {
+			delay := retryDelay
+			if exponential {
+				delay = retryDelay * time.Duration(1<<uint(attempt-1))
+			}
+			time.Sleep(delay)
+		}
 	}
 
-	if err == nil {
-		if ackErr := w.store.Ack(w.queueName, job.JobID); ackErr != nil {
-			w.logger.Error("Failed to ack job", "workerID", workerID, "jobID", job.JobID, "error", ackErr)
-		} else {
-			w.logger.Info("Completed job", "workerID", workerID, "jobID", job.JobID, "duration", processingTime)
-			// Handle metrics with clean struct
-			if w.config.OnJobComplete != nil {
-				metrics := config.JobMetrics{
-					QueueName: w.queueName,
-					JobID:     job.JobID,
-					Duration:  processingTime,
-					Error:     err,
-					Timestamp: time.Now(),
-				}
-				w.enqueueMetrics(metrics)
-			}
+	// All attempts failed
+	w.logger.Error("Job failed after max retries", "workerID", workerID, "jobID", job.JobID, "error", lastErr)
+	if w.config.OnJobComplete != nil {
+		metrics := config.JobMetrics{
+			QueueName: w.queueName,
+			JobID:     job.JobID,
+			Duration:  0,
+			Error:     lastErr,
+			Timestamp: time.Now(),
 		}
-	} else {
-		// Job failed - log error (retry logic can be added later)
-		w.logger.Error("Failed to process job", "workerID", workerID, "jobID", job.JobID, "error", err)
+		w.enqueueMetrics(metrics)
 	}
 }
 

@@ -30,12 +30,15 @@ type JobMetrics struct {
 type MetricsCallback func(metrics JobMetrics)
 
 type Config struct {
-	Driver           string
-	DriverConfig     DriverConfig
-	MaxWorkers       int
-	ConcurrencyLimit int
-	OnJobComplete    MetricsCallback
-	StatsEnabled     bool
+	Driver             string
+	DriverConfig       DriverConfig
+	MaxWorkers         int
+	ConcurrencyLimit   int
+	OnJobComplete      MetricsCallback
+	StatsEnabled       bool
+	MaxRetryAttempts   int
+	RetryDelay         time.Duration
+	ExponentialBackoff bool
 }
 
 type RedisConfig struct {
@@ -59,11 +62,14 @@ func sensibleDefaultConcurrencyLimit() int {
 
 func NewInMemoryConfig() Config {
 	return Config{
-		Driver:           DriverMemory,
-		DriverConfig:     nil,
-		MaxWorkers:       sensibleDefaultMaxWorkers(),
-		ConcurrencyLimit: sensibleDefaultConcurrencyLimit(),
-		OnJobComplete:    nil,
+		Driver:             DriverMemory,
+		DriverConfig:       nil,
+		MaxWorkers:         sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:      nil,
+		MaxRetryAttempts:   3,
+		RetryDelay:         2 * time.Second,
+		ExponentialBackoff: false,
 	}
 }
 
@@ -75,9 +81,12 @@ func NewRedisConfig(address string, password string, db int) Config {
 			Password: password,
 			Db:       db,
 		},
-		MaxWorkers:       sensibleDefaultMaxWorkers(),
-		ConcurrencyLimit: sensibleDefaultConcurrencyLimit(),
-		OnJobComplete:    nil,
+		MaxWorkers:         sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:      nil,
+		MaxRetryAttempts:   3,
+		RetryDelay:         2 * time.Second,
+		ExponentialBackoff: false,
 	}
 }
 
@@ -98,6 +107,21 @@ func (c Config) WithConcurrencyLimit(limit int) Config {
 
 func (c Config) WithMetricsCallback(callback MetricsCallback) Config {
 	c.OnJobComplete = callback
+	return c
+}
+
+func (c Config) WithMaxRetryAttempts(attempts int) Config {
+	c.MaxRetryAttempts = attempts
+	return c
+}
+
+func (c Config) WithRetryDelay(delay time.Duration) Config {
+	c.RetryDelay = delay
+	return c
+}
+
+func (c Config) WithExponentialBackoff(enabled bool) Config {
+	c.ExponentialBackoff = enabled
 	return c
 }
 
