@@ -107,11 +107,22 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 
 func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.JobContext) {
 
+	defer func() {
+		if r := recover(); r != nil {
+			w.logger.Error("Panic recovered in job execution", "workerID", workerID, "jobID", job.JobID, "panic", r)
+			// Record panic in stats if enabled
+			if w.config.StatsEnabled && w.statsCollector != nil {
+				w.statsCollector.RecordComplete(0, false)
+			}
+		}
+	}()
+
+	defer w.concurrencySem.Release(1)
+
 	if err := w.concurrencySem.Acquire(ctx, 1); err != nil {
 		w.logger.Error("Failed to acquire concurrency semaphore", "workerID", workerID, "jobID", job.JobID, "error", err)
 		return
 	}
-	defer w.concurrencySem.Release(1)
 
 	isCollectorEnabled := w.config.StatsEnabled && w.statsCollector != nil
 

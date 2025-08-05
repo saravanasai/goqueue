@@ -51,7 +51,7 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 			queueCancel()
 			return nil, fmt.Errorf("invalid Redis config provided")
 		}
-		redisMgr := manager.NewRedisClientManager(logger)
+		redisMgr := manager.NewRedisClientManager(redisCfg.Addr, redisCfg.Password, redisCfg.Db, logger)
 		redisMgr.StartPeriodicHealthCheck(queueCtx)
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
 		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Db, logger)
