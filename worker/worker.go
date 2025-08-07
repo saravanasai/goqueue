@@ -178,6 +178,17 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 
 	// All attempts failed
 	w.logger.Error("Job failed after max retries", "workerID", workerID, "jobID", job.JobID, "error", lastErr)
+
+	// Try to push to DLQ if configured
+	if w.config.DLQAdapter != nil {
+		if dlqErr := w.config.DLQAdapter.Push(ctx, &job, lastErr); dlqErr != nil {
+			w.logger.Error("Failed to push job to DLQ", "jobID", job.JobID, "error", dlqErr)
+		}
+	} else {
+		w.logger.Info("No DLQ configured, discarding failed job", "jobID", job.JobID)
+	}
+
+	// Record metrics if enabled
 	if w.config.OnJobComplete != nil {
 		metrics := config.JobMetrics{
 			QueueName: w.queueName,

@@ -138,3 +138,25 @@ cfg := config.NewInMemoryConfig().
         }
     })
 ```
+
+### Dead Letter Queue (DLQ) Configuration
+
+```go
+// Using the built-in Redis DLQ adapter
+redisDLQ := dlq.NewRedisDLQ(redisClient, logger)
+cfg := config.NewRedisConfig("localhost:6379", "", 0).
+    WithDLQAdapter(redisDLQ)
+
+// Custom DLQ implementation
+type MyCustomDLQ struct {
+    // your implementation
+}
+
+func (d *MyCustomDLQ) Push(ctx context.Context, job *job.JobContext, err error) error {
+    // your implementation
+    return nil
+}
+
+cfg := config.NewRedisConfig("localhost:6379", "", 0).
+    WithDLQAdapter(&MyCustomDLQ{})
+```

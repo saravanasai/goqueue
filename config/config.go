@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/saravanasai/goqueue/adapter/dlq"
 	"github.com/saravanasai/goqueue/internal/logger"
 )
 
@@ -39,6 +40,7 @@ type Config struct {
 	MaxRetryAttempts   int
 	RetryDelay         time.Duration
 	ExponentialBackoff bool
+	DLQAdapter         dlq.DLQAdapter // Added DLQ support
 }
 
 type RedisConfig struct {
@@ -122,6 +124,11 @@ func (c Config) WithRetryDelay(delay time.Duration) Config {
 
 func (c Config) WithExponentialBackoff(enabled bool) Config {
 	c.ExponentialBackoff = enabled
+	return c
+}
+
+func (c Config) WithDLQAdapter(adapter dlq.DLQAdapter) Config {
+	c.DLQAdapter = adapter
 	return c
 }
 
