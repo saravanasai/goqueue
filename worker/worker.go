@@ -1,3 +1,6 @@
+// Package worker provides job processing functionality through concurrent worker goroutines.
+// It handles job execution, retries, error recovery, and graceful shutdown while maintaining
+// configurable concurrency limits and collecting performance metrics.
 package worker
 
 import (
@@ -13,25 +16,44 @@ import (
 	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/internal/stats"
 	"github.com/saravanasai/goqueue/job"
+	"github.com/saravanasai/goqueue/middleware"
 	"golang.org/x/sync/semaphore"
 )
 
+// Worker manages a pool of goroutines that process jobs from a queue.
+// It handles job execution, retries, metrics collection, and graceful shutdown.
 type Worker struct {
-	store          adapter.Store
-	config         configuration.Config
-	queueName      string
-	wg             sync.WaitGroup
-	shutdownCh     chan struct{}
+	// store provides access to the job storage backend
+	store adapter.Store
+	// config contains worker configuration options
+	config configuration.Config
+	// queueName identifies which queue this worker processes
+	queueName string
+	// wg tracks active worker goroutines for shutdown
+	wg sync.WaitGroup
+	// shutdownCh signals workers to stop processing
+	shutdownCh chan struct{}
+	// isShuttingDown indicates shutdown is in progress
 	isShuttingDown int32
+	// concurrencySem limits concurrent job processing
 	concurrencySem *semaphore.Weighted
+	// metricsChannel buffers job completion metrics
 	metricsChannel chan configuration.JobMetrics
+	// statsCollector gathers worker performance metrics
 	statsCollector *stats.Collector
-	logger         logger.Logger
+	// logger handles structured logging
+	logger logger.Logger
+	// handler processes jobs through the middleware chain
+	handler middleware.HandlerFunc
 }
 
+// NewWorker creates a new Worker instance with the specified configuration.
+// It initializes the middleware chain, concurrency controls, and metrics collection.
 func NewWorker(store adapter.Store, config configuration.Config, queueName string, statsCollector *stats.Collector, logger logger.Logger) *Worker {
-
 	metricsBufferSize := calculateMetricsBufferSize(config)
+
+	// Create handler chain with configured middlewares
+	handler := middleware.Chain(config.Middlewares...)
 
 	return &Worker{
 		store:          store,
@@ -41,13 +63,16 @@ func NewWorker(store adapter.Store, config configuration.Config, queueName strin
 		concurrencySem: semaphore.NewWeighted(int64(config.ConcurrencyLimit)),
 		metricsChannel: make(chan configuration.JobMetrics, metricsBufferSize),
 		statsCollector: statsCollector,
-		logger:         logger,
+		logger:        logger,
+		handler:       handler,
 	}
 }
 
+// Start launches the specified number of worker goroutines to process jobs.
+// It returns an error if the driver is unsupported or if the requested number
+// of workers exceeds the configured maximum.
 func (w *Worker) Start(ctx context.Context, noOfWorkers int) error {
-
-	if w.config.Driver != config.DriverMemory && w.config.Driver != config.DriverRedis {
+	if w.config.Driver != configuration.DriverMemory && w.config.Driver != configuration.DriverRedis {
 		return fmt.Errorf("unsupported driver: %s", w.config.Driver)
 	}
 
@@ -64,9 +89,10 @@ func (w *Worker) Start(ctx context.Context, noOfWorkers int) error {
 	go w.startMetricsWorker(ctx)
 
 	return nil
-
 }
 
+// workerLoop runs the main job processing loop for a single worker goroutine.
+// It continuously polls for jobs and processes them until shutdown is signaled.
 func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 	defer w.wg.Done()
 
@@ -105,8 +131,9 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 	}
 }
 
+// processJobSafely executes a job with panic recovery, retry logic, and metrics collection.
+// It respects concurrency limits and handles job completion acknowledgment.
 func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.JobContext) {
-
 	defer func() {
 		if r := recover(); r != nil {
 			w.logger.Error("Panic recovered in job execution", "workerID", workerID, "jobID", job.JobID, "panic", r)
@@ -138,7 +165,7 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 	var lastErr error
 	for attempt = 1; attempt <= maxAttempts; attempt++ {
 		startTime := time.Now()
-		lastErr = job.Job.Process(ctx)
+		lastErr = w.handler(ctx, &job)
 		processingTime := time.Since(startTime)
 		success := lastErr == nil
 
@@ -201,6 +228,8 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 	}
 }
 
+// enqueueMetrics adds job completion metrics to the metrics channel.
+// If the channel is full, the metrics are dropped and an error is logged.
 func (w *Worker) enqueueMetrics(metrics config.JobMetrics) {
 	select {
 	case w.metricsChannel <- metrics:
@@ -209,6 +238,8 @@ func (w *Worker) enqueueMetrics(metrics config.JobMetrics) {
 	}
 }
 
+// startMetricsWorker runs a goroutine that processes job completion metrics
+// and calls the configured metrics callback function.
 func (w *Worker) startMetricsWorker(ctx context.Context) {
 	w.wg.Add(1)
 	go func() {
@@ -233,6 +264,9 @@ func (w *Worker) startMetricsWorker(ctx context.Context) {
 	}()
 }
 
+// Shutdown initiates a graceful shutdown of all worker goroutines.
+// It prevents workers from picking up new jobs and waits for in-progress
+// jobs to complete, up to the context's deadline.
 func (w *Worker) Shutdown(ctx context.Context) error {
 	w.logger.Info("Initiating graceful shutdown", "queue", w.queueName)
 
@@ -265,6 +299,8 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 	}
 }
 
+// calculateMetricsBufferSize determines the appropriate size for the metrics channel buffer
+// based on the worker configuration, ensuring it stays within reasonable bounds.
 func calculateMetricsBufferSize(config config.Config) int {
 	// Constants for buffer size calculation
 	const (

@@ -7,6 +7,7 @@ A lightweight, high-performance job queue library for Go applications with suppo
 - **Multiple Backends**: In-memory (development) and Redis (production)
 - **Concurrency Control**: Configurable worker limits and job concurrency
 - **Metrics Support**: Optional callback-based metrics collection
+- **Middleware Support**: Chainable middleware for job processing customization
 - **Lightweight**: Zero external dependencies for in-memory backend
 - **Thread Safe**: Concurrent job processing with semaphore-based flow control
 
@@ -160,3 +161,47 @@ func (d *MyCustomDLQ) Push(ctx context.Context, job *job.JobContext, err error) 
 cfg := config.NewRedisConfig("localhost:6379", "", 0).
     WithDLQAdapter(&MyCustomDLQ{})
 ```
+
+### Middleware Configuration
+
+GoQueue supports middleware for customizing job processing behavior. Middleware can be used for logging, conditional execution, and more. The middleware chain executes in the order they are added, with each middleware wrapping the next one in the chain.
+
+```go
+// Using built-in middleware with a logger
+cfg := config.NewRedisConfig("localhost:6379", "", 0).
+    WithMiddleware(middleware.LoggingMiddleware(logger))
+
+// Custom middleware example
+func MyCustomMiddleware() middleware.Middleware {
+    return func(next middleware.HandlerFunc) middleware.HandlerFunc {
+        return func(ctx context.Context, jobCtx *job.JobContext) error {
+            // Pre-processing logic
+            fmt.Printf("Processing job: %s\n", jobCtx.JobID)
+            
+            err := next(ctx, jobCtx)
+            
+            // Post-processing logic
+            if err != nil {
+                fmt.Printf("Job failed: %s\n", err)
+            }
+            return err
+        }
+    }
+}
+
+// Using multiple middleware
+cfg.WithMiddlewares(
+    middleware.LoggingMiddleware(logger),
+    MyCustomMiddleware(),
+)
+
+// Using conditional skip middleware
+cfg.WithMiddleware(middleware.ConditionalSkipMiddleware(func(jobCtx *job.JobContext) bool {
+    // Skip processing for jobs older than 1 hour
+    return time.Since(jobCtx.EnqueuedAt) > time.Hour
+}))
+```
+
+Built-in middleware includes:
+- `LoggingMiddleware`: Logs job execution details including start, completion, and errors
+- `ConditionalSkipMiddleware`: Skips job processing based on custom conditions
