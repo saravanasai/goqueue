@@ -72,8 +72,9 @@ type Config struct {
 	DLQAdapter dlq.DLQAdapter
 	// Middlewares is the chain of job processing middleware
 	Middlewares []middleware.Middleware
+	// JobTimeout is the default timeout for job execution (can be overridden per job)
+	JobTimeout time.Duration
 }
-
 // RedisConfig contains configuration options specific to the Redis driver.
 type RedisConfig struct {
 	// Addr is the Redis server address (e.g., "localhost:6379")
@@ -194,6 +195,12 @@ func (c Config) WithMiddleware(m middleware.Middleware) Config {
 // Middlewares are executed in the order they are added.
 func (c Config) WithMiddlewares(middlewares ...middleware.Middleware) Config {
 	c.Middlewares = append(c.Middlewares, middlewares...)
+	return c
+}
+
+// WithJobTimeout sets the default timeout for job execution.
+func (c Config) WithJobTimeout(timeout time.Duration) Config {
+	c.JobTimeout = timeout
 	return c
 }
 

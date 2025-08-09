@@ -137,7 +137,6 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 	defer func() {
 		if r := recover(); r != nil {
 			w.logger.Error("Panic recovered in job execution", "workerID", workerID, "jobID", job.JobID, "panic", r)
-			// Record panic in stats if enabled
 			if w.config.StatsEnabled && w.statsCollector != nil {
 				w.statsCollector.RecordComplete(0, false)
 			}
@@ -145,14 +144,12 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 	}()
 
 	defer w.concurrencySem.Release(1)
-
 	if err := w.concurrencySem.Acquire(ctx, 1); err != nil {
 		w.logger.Error("Failed to acquire concurrency semaphore", "workerID", workerID, "jobID", job.JobID, "error", err)
 		return
 	}
 
 	isCollectorEnabled := w.config.StatsEnabled && w.statsCollector != nil
-
 	if isCollectorEnabled {
 		w.statsCollector.RecordDequeue(job.EnqueuedAt)
 	}
@@ -161,11 +158,32 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 	retryDelay := w.config.RetryDelay
 	exponential := w.config.ExponentialBackoff
 
+	// Determine timeout for this job
+	timeout := job.Timeout
+	if timeout == 0 {
+		timeout = w.config.JobTimeout
+	}
+
 	var attempt int
 	var lastErr error
 	for attempt = 1; attempt <= maxAttempts; attempt++ {
 		startTime := time.Now()
-		lastErr = w.handler(ctx, &job)
+		execCtx := ctx
+		cancel := func() {}
+		if timeout > 0 {
+			execCtx, cancel = context.WithTimeout(ctx, timeout)
+		}
+		done := make(chan error, 1)
+		go func() {
+			done <- w.handler(execCtx, &job)
+		}()
+		select {
+		case lastErr = <-done:
+			// completed or failed
+		case <-execCtx.Done():
+			lastErr = execCtx.Err()
+		}
+		cancel()
 		processingTime := time.Since(startTime)
 		success := lastErr == nil
 
@@ -192,8 +210,12 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 			return
 		}
 
-		// Job failed, log and retry if attempts remain
-		w.logger.Error("Failed to process job", "workerID", workerID, "jobID", job.JobID, "attempt", attempt, "error", lastErr)
+		// Timeout error handling
+		if lastErr == context.DeadlineExceeded {
+			w.logger.Error("Job execution timed out", "workerID", workerID, "jobID", job.JobID, "queue", w.queueName, "timeout", timeout)
+		} else {
+			w.logger.Error("Failed to process job", "workerID", workerID, "jobID", job.JobID, "attempt", attempt, "error", lastErr)
+		}
 		if attempt < maxAttempts {
 			delay := retryDelay
 			if exponential {

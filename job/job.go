@@ -27,6 +27,13 @@ type JobContext struct {
 	QueueName string
 	// EnqueuedAt is the timestamp when the job was added to the queue
 	EnqueuedAt time.Time
+	// Timeout is the maximum duration for job execution (optional, overrides config)
+	Timeout time.Duration
+}
+
+// SetTimeout sets the timeout for this job context.
+func (jc *JobContext) SetTimeout(timeout time.Duration) {
+	jc.Timeout = timeout
 }
 
 // QueuedJob represents a job that has been queued for processing.

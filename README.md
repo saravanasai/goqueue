@@ -103,6 +103,28 @@ func main() {
 
 ## Configuration
 
+### Job Timeout Configuration
+
+You can set a default job timeout for all jobs using the config:
+
+```go
+cfg := config.NewInMemoryConfig().
+    WithJobTimeout(30 * time.Second) // Set default job timeout to 30 seconds
+
+// For Redis
+cfg := config.NewRedisConfig("localhost:6379", "", 0).
+    WithJobTimeout(30 * time.Second)
+```
+
+You can also set a timeout for individual jobs:
+
+```go
+jobCtx := job.JobContext{Job: &EmailJob{...}}
+jobCtx.SetTimeout(10 * time.Second) // Set timeout for this job only
+```
+
+If a job exceeds its timeout, it will be cancelled, logged as a timeout error, and retried or sent to DLQ as configured.
+
 ### Basic Configuration
 
 ```go
@@ -147,10 +169,10 @@ cfg.WithMaxWorkers(4).WithConcurrencyLimit(10)
 cfg := config.NewInMemoryConfig().
     WithMetricsCallback(func(metrics config.JobMetrics) {
         if metrics.Error != nil {
-            log.Printf("Job %s failed in %v: %v", 
+            log.Printf("Job %s failed in %v: %v",
                 metrics.JobID, metrics.Duration, metrics.Error)
         } else {
-            log.Printf("Job %s completed in %v", 
+            log.Printf("Job %s completed in %v",
                 metrics.JobID, metrics.Duration)
         }
     })
@@ -193,9 +215,9 @@ func MyCustomMiddleware() middleware.Middleware {
         return func(ctx context.Context, jobCtx *job.JobContext) error {
             // Pre-processing logic
             fmt.Printf("Processing job: %s\n", jobCtx.JobID)
-            
+
             err := next(ctx, jobCtx)
-            
+
             // Post-processing logic
             if err != nil {
                 fmt.Printf("Job failed: %s\n", err)
@@ -219,6 +241,7 @@ cfg.WithMiddleware(middleware.ConditionalSkipMiddleware(func(jobCtx *job.JobCont
 ```
 
 Built-in middleware includes:
+
 - `LoggingMiddleware`: Logs job execution details including start, completion, and errors
 - `ConditionalSkipMiddleware`: Skips job processing based on custom conditions
 
@@ -227,16 +250,19 @@ Built-in middleware includes:
 Based on testing with AWS t2.micro instance (1 vCPU, 1GB RAM) running Redis 6.x:
 
 ### Redis Backend
+
 - **Simple Jobs (< 1ms processing)**: ~1,000 jobs/second
 - **I/O Jobs (10-100ms processing)**: ~100-500 jobs/second
 - **CPU Jobs (100ms+ processing)**: ~50-100 jobs/second
 
 ### In-Memory Backend
+
 - **Simple Jobs (< 1ms processing)**: ~5,000 jobs/second
 - **I/O Jobs (10-100ms processing)**: ~500-1,000 jobs/second
 - **CPU Jobs (100ms+ processing)**: ~100-200 jobs/second
 
 Note: These numbers are approximate and will vary based on:
+
 - Instance type and resources
 - Network latency (for Redis)
 - Job complexity and processing time
