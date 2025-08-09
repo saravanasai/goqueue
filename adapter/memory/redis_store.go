@@ -31,6 +31,7 @@ const (
 	processingQueueName   = "processing:"
 	MetricsQueueSuffix    = ":metrics"
 	MetricsAckQueueSuffix = ":metrics:ack"
+	JobIndexKeyFormat     = "job_index:%s"
 )
 
 type RedisStore struct {
@@ -88,7 +89,7 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 	}
 
 	ctx := context.Background()
-	indexKey := "job_index:" + queueName
+	indexKey := JobIndexKeyFormat + queueName
 	rs.client.HSet(ctx, indexKey, meta.ID, payload).Err()
 	return rs.client.LPush(ctx, queueName, payload).Err()
 }
@@ -100,7 +101,7 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 		return fmt.Errorf("redis instance is currently unhealthy, cannot push jobs")
 	}
 	ctx := context.Background()
-	indexKey := "job_index:" + queueName
+	indexKey := JobIndexKeyFormat + queueName
 	var payloads []interface{}
 	for _, jb := range jobs {
 		jobName := getJobName(jb)
@@ -174,7 +175,7 @@ func (rs *RedisStore) Pop(queueName string) (job.JobContext, error) {
 func (rs *RedisStore) Ack(queueName string, jobID string) error {
 	ctx := context.Background()
 	processingQueue := processingQueueName + queueName
-	indexKey := "job_index:" + queueName
+	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 
 	// Get actual payload using job ID
 	payload, err := rs.client.HGet(ctx, indexKey, jobID).Result()
