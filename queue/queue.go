@@ -106,6 +106,12 @@ func (q *Queue) Dispatch(job job.Job) error {
 	return q.dispatcher.Dispatch(q.queueName, job)
 }
 
+// DispatchBatch adds multiple jobs to the queue for processing.
+// The jobs will be stored in the backend and picked up by available workers.
+func (q *Queue) DispatchBatch(jobs []job.Job) error {
+	return q.dispatcher.DispatchBatch(q.queueName, jobs)
+}
+
 // StartWorkers launches the specified number of worker goroutines to process jobs.
 // The workers will continue running until the context is cancelled.
 func (q *Queue) StartWorkers(ctx context.Context, count int) {

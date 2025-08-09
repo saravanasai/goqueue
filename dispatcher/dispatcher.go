@@ -25,3 +25,14 @@ func (ds *Dispatcher) Dispatch(queueName string, job job.Job) error {
 	}
 	return err
 }
+
+// DispatchBatch adds multiple jobs to the queue in a single call.
+func (ds *Dispatcher) DispatchBatch(queueName string, jobs []job.Job) error {
+	err := ds.store.PushBatch(queueName, jobs)
+	if ds.statsCollector != nil {
+		for range jobs {
+			ds.statsCollector.RecordEnqueue()
+		}
+	}
+	return err
+}

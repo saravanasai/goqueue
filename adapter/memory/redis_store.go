@@ -83,6 +83,51 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 	indexKey := "job_index:" + queueName
 	rs.client.HSet(ctx, indexKey, meta.ID, payload).Err()
 	return rs.client.LPush(ctx, queueName, payload).Err()
+}
+
+// PushBatch adds multiple jobs to the Redis queue in a single LPUSH call.
+func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
+	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
+		rs.logger.Error("redis instance is currently unhealthy, cannot push jobs", "queue", queueName)
+		return fmt.Errorf("redis instance is currently unhealthy, cannot push jobs")
+	}
+	ctx := context.Background()
+	indexKey := "job_index:" + queueName
+	var payloads []interface{}
+	for _, jb := range jobs {
+		t := reflect.TypeOf(jb)
+		if t.Kind() == reflect.Ptr {
+			t = t.Elem()
+		}
+		jobName := t.Name()
+		jobPayload, err := json.Marshal(jb)
+		if err != nil {
+			rs.logger.Error("failed to marshal job", "error", err, "queue", queueName)
+			continue
+		}
+		if jobName == "" {
+			rs.logger.Error("could not determine job name from type", "queue", queueName)
+			continue
+		}
+		meta := job.RedisQueuedJob{
+			Job:        jobPayload,
+			JobName:    jobName,
+			ID:         generateID(),
+			EnqueuedAt: time.Now(),
+			RetryCount: 0,
+		}
+		payload, err := json.Marshal(meta)
+		if err != nil {
+			rs.logger.Error("failed to marshal job metadata", "error", err, "queue", queueName)
+			continue
+		}
+		rs.client.HSet(ctx, indexKey, meta.ID, payload).Err()
+		payloads = append(payloads, payload)
+	}
+	if len(payloads) == 0 {
+		return nil
+	}
+	return rs.client.LPush(ctx, queueName, payloads...).Err()
 
 }
 

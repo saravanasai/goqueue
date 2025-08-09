@@ -38,6 +38,25 @@ func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
 	return nil
 }
 
+// PushBatch adds multiple jobs to the in-memory queue.
+func (store *InMemoryStore) PushBatch(queueName string, jobs []job.Job) error {
+	q, ok := store.Queue[queueName]
+	if !ok {
+		q = &queue{make(chan job.QueuedJob, 1000)}
+		store.Queue[queueName] = q
+	}
+	for _, jb := range jobs {
+		meta := job.QueuedJob{
+			Job:        jb,
+			ID:         generateID(),
+			EnqueuedAt: time.Now(),
+			RetryCount: 0,
+		}
+		q.jobChannel <- meta
+	}
+	return nil
+}
+
 func (store *InMemoryStore) Pop(queueName string) (job.JobContext, error) {
 
 	q, ok := store.Queue[queueName]

@@ -35,6 +35,11 @@ func Dispatch(q *queue.Queue, payload job.Job) error {
 	return q.Dispatch(payload)
 }
 
+// DispatchBatch adds multiple jobs to the queue for processing.
+func DispatchBatch(q *queue.Queue, jobs []job.Job) error {
+	return q.DispatchBatch(jobs)
+}
+
 func StartWorker(q *queue.Queue, ctx context.Context, count int) {
 	q.StartWorkers(ctx, count)
 }

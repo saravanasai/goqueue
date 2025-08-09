@@ -74,17 +74,26 @@ func main() {
     // Start workers
     goqueue.StartWorker(q, ctx, 2)
 
-    // Dispatch jobs
+    // Dispatch jobs (single)
     for i := 0; i < 5; i++ {
         job := EmailJob{
             To:      fmt.Sprintf("user%d@example.com", i),
             Subject: "Welcome!",
             Body:    "Thank you for signing up",
         }
-        
         if err := goqueue.Dispatch(q, job); err != nil {
             log.Printf("Failed to dispatch job: %v", err)
         }
+    }
+
+    // Dispatch jobs (batch)
+    batch := []goqueue.Job{
+        &EmailJob{To: "userA@example.com", Subject: "Batch Welcome!", Body: "Hello A"},
+        &EmailJob{To: "userB@example.com", Subject: "Batch Welcome!", Body: "Hello B"},
+        &EmailJob{To: "userC@example.com", Subject: "Batch Welcome!", Body: "Hello C"},
+    }
+    if err := goqueue.DispatchBatch(q, batch); err != nil {
+        log.Printf("Failed to dispatch batch jobs: %v", err)
     }
 
     // Let jobs process
