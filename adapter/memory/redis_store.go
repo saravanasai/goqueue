@@ -15,6 +15,18 @@ import (
 	"github.com/saravanasai/goqueue/job"
 )
 
+// getJobName returns the concrete type name of a job.Job, handling pointer types.
+func getJobName(jb job.Job) string {
+	t := reflect.TypeOf(jb)
+	if t == nil {
+		return ""
+	}
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Name()
+}
+
 const (
 	processingQueueName   = "processing:"
 	MetricsQueueSuffix    = ":metrics"
@@ -47,11 +59,7 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 		return fmt.Errorf("redis instance is currently unhealthy, cannot push job")
 	}
 
-	t := reflect.TypeOf(jb)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	jobName := t.Name()
+	jobName := getJobName(jb)
 
 	// Marshal the actual job separately
 	jobPayload, err := json.Marshal(jb)
@@ -95,11 +103,7 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 	indexKey := "job_index:" + queueName
 	var payloads []interface{}
 	for _, jb := range jobs {
-		t := reflect.TypeOf(jb)
-		if t.Kind() == reflect.Ptr {
-			t = t.Elem()
-		}
-		jobName := t.Name()
+		jobName := getJobName(jb)
 		jobPayload, err := json.Marshal(jb)
 		if err != nil {
 			rs.logger.Error("failed to marshal job", "error", err, "queue", queueName)
