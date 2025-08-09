@@ -268,3 +268,22 @@ Note: These numbers are approximate and will vary based on:
 - Job complexity and processing time
 - Concurrent worker configuration
 - Queue size and load patterns
+
+<!-- Badges -->
+
+![Build Status](https://github.com/saravanasai/goqueue/actions/workflows/ci.yml/badge.svg)
+[![Go Reference](https://pkg.go.dev/badge/github.com/saravanasai/goqueue.svg)](https://pkg.go.dev/github.com/saravanasai/goqueue)
+![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+## Contributing
+
+Contributions, issues, and feature requests are welcome!
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -am 'Add new feature'`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a pull request
+
+Please read the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and follow the guidelines. For major changes, open an issue first to discuss what you would like to change.
