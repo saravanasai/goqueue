@@ -18,6 +18,8 @@ const (
 	DriverMemory = "memory"
 	// DriverRedis uses Redis as the backend storage
 	DriverRedis = "redis"
+	// DriverSQS uses AWS SQS as the backend storage
+	DriverSQS = "sqs"
 	// DriverDatabase is reserved for future database backend support
 	DriverDatabase = "database"
 )
@@ -90,6 +92,27 @@ func (r RedisConfig) Type() string {
 	return "redis"
 }
 
+// SQSConfig contains configuration options specific to the AWS SQS driver.
+type SQSConfig struct {
+	// QueueURL is the URL of the SQS queue
+	QueueURL string
+	// Region is the AWS region where the SQS queue is located
+	Region string
+	// AccessKeyID is the AWS access key ID for authentication
+	AccessKeyID string
+	// SecretAccessKey is the AWS secret access key for authentication
+	SecretAccessKey string
+	// MaxMessages is the maximum number of messages to retrieve in a single batch (1-10)
+	MaxMessages int
+	// VisibilityTimeout is the duration that messages are hidden from subsequent retrieve requests
+	VisibilityTimeout time.Duration
+}
+
+// Type implements the DriverConfig interface.
+func (s SQSConfig) Type() string {
+	return "sqs"
+}
+
 // sensibleDefaultMaxWorkers returns a reasonable default for MaxWorkers
 // based on the number of CPU cores.
 func sensibleDefaultMaxWorkers() int {
@@ -126,6 +149,28 @@ func NewRedisConfig(address string, password string, db int) Config {
 			Addr:     address,
 			Password: password,
 			Db:       db,
+		},
+		MaxWorkers:         sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:      nil,
+		MaxRetryAttempts:   3,
+		RetryDelay:         2 * time.Second,
+		ExponentialBackoff: false,
+	}
+}
+
+// NewSQSConfig creates a new Config instance with AWS SQS driver and sensible defaults.
+// This is suitable for production environments with AWS SQS.
+func NewSQSConfig(queueURL, region, accessKeyID, secretAccessKey string) Config {
+	return Config{
+		Driver: DriverSQS,
+		DriverConfig: SQSConfig{
+			QueueURL:        queueURL,
+			Region:          region,
+			AccessKeyID:     accessKeyID,
+			SecretAccessKey: secretAccessKey,
+			MaxMessages:     1, // Default to 1 message at a time
+			VisibilityTimeout: 30 * time.Second, // Default visibility timeout
 		},
 		MaxWorkers:         sensibleDefaultMaxWorkers(),
 		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),

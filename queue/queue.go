@@ -10,6 +10,7 @@ import (
 
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/adapter/memory"
+	"github.com/saravanasai/goqueue/adapter/sqs"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/dispatcher"
 	"github.com/saravanasai/goqueue/internal/logger"
@@ -72,7 +73,14 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		redisMgr.StartPeriodicHealthCheck(queueCtx)
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
 		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Db, logger)
-
+	case config.DriverSQS:
+		var err error
+		store, err = sqs.NewSQSStore(cfg, logger)
+		if err != nil {
+			logger.Error("Failed to initialize SQS store", "error", err)
+			queueCancel()
+			return nil, fmt.Errorf("failed to initialize SQS store: %w", err)
+		}
 	default:
 		queueCancel()
 		return nil, fmt.Errorf("unsupported driver: %s", cfg.Driver)

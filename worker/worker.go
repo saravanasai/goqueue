@@ -72,7 +72,13 @@ func NewWorker(store adapter.Store, config configuration.Config, queueName strin
 // It returns an error if the driver is unsupported or if the requested number
 // of workers exceeds the configured maximum.
 func (w *Worker) Start(ctx context.Context, noOfWorkers int) error {
-	if w.config.Driver != configuration.DriverMemory && w.config.Driver != configuration.DriverRedis {
+	supportedDrivers := map[string]bool{
+		configuration.DriverMemory: true,
+		configuration.DriverRedis:  true,
+		configuration.DriverSQS:    true,
+	}
+
+	if !supportedDrivers[w.config.Driver] {
 		return fmt.Errorf("unsupported driver: %s", w.config.Driver)
 	}
 

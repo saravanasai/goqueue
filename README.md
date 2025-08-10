@@ -4,7 +4,7 @@ A lightweight, high-performance job queue library for Go applications with suppo
 
 ## Features
 
-- **Multiple Backends**: In-memory (development) and Redis (production)
+- **Multiple Backends**: In-memory (development), Redis (production), and AWS SQS (cloud-native)
 - **Concurrency Control**: Configurable worker limits and job concurrency
 - **Metrics Support**: Optional callback-based metrics collection
 - **Middleware Support**: Chainable middleware for job processing customization
@@ -133,6 +133,14 @@ cfg := config.NewInMemoryConfig()
 
 // Redis Backend (Production)
 cfg := config.NewRedisConfig("localhost:6379", "", 0) // addr, password, db
+
+// AWS SQS Backend (Cloud-Native)
+cfg := config.NewSQSConfig(
+    "https://sqs.us-west-2.amazonaws.com/123456789012/my-queue",  // queueURL
+    "us-west-2",                                                  // region
+    "AKIAIOSFODNN7EXAMPLE",                                       // accessKeyID (optional, can use instance profile)
+    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"                   // secretAccessKey (optional)
+)
 ```
 
 ### Concurrency Configuration
@@ -185,6 +193,15 @@ cfg := config.NewInMemoryConfig().
 redisDLQ := dlq.NewRedisDLQ(redisClient, logger)
 cfg := config.NewRedisConfig("localhost:6379", "", 0).
     WithDLQAdapter(redisDLQ)
+
+// Using the AWS SQS DLQ adapter
+awsConfig, _ := config.LoadDefaultConfig(context.Background(),
+    config.WithRegion("us-west-2"),
+)
+sqsClient := sqs.NewFromConfig(awsConfig)
+sqsDLQ := dlq.NewSQSDLQ(sqsClient, "https://sqs.us-west-2.amazonaws.com/123456789012/my-dlq", logger)
+cfg := config.NewSQSConfig("https://sqs.us-west-2.amazonaws.com/123456789012/my-queue", "us-west-2", "", "").
+    WithDLQAdapter(sqsDLQ)
 
 // Custom DLQ implementation
 type MyCustomDLQ struct {
@@ -255,6 +272,12 @@ Based on testing with AWS t2.micro instance (1 vCPU, 1GB RAM) running Redis 6.x:
 - **I/O Jobs (10-100ms processing)**: ~100-500 jobs/second
 - **CPU Jobs (100ms+ processing)**: ~50-100 jobs/second
 
+### AWS SQS Backend
+
+- **Simple Jobs (< 1ms processing)**: ~50-100 jobs/second
+- **I/O Jobs (10-100ms processing)**: ~50-80 jobs/second
+- **CPU Jobs (100ms+ processing)**: ~20-50 jobs/second
+
 ### In-Memory Backend
 
 - **Simple Jobs (< 1ms processing)**: ~5,000 jobs/second
@@ -264,10 +287,53 @@ Based on testing with AWS t2.micro instance (1 vCPU, 1GB RAM) running Redis 6.x:
 Note: These numbers are approximate and will vary based on:
 
 - Instance type and resources
-- Network latency (for Redis)
+- Network latency (for Redis/SQS)
 - Job complexity and processing time
 - Concurrent worker configuration
 - Queue size and load patterns
+- AWS SQS visibility timeout and batch size settings
+
+## AWS SQS Configuration
+
+When using the SQS backend, you'll need the following AWS permissions:
+
+- `sqs:SendMessage` - For enqueueing jobs
+- `sqs:ReceiveMessage` - For worker to fetch jobs
+- `sqs:DeleteMessage` - For acknowledging completed jobs
+- `sqs:GetQueueAttributes` - For health checks
+- `sqs:SendMessageBatch` - For batch job enqueueing
+
+Example IAM policy:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "sqs:SendMessage",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueAttributes",
+                "sqs:SendMessageBatch"
+            ],
+            "Resource": [
+                "arn:aws:sqs:region:account-id:queue-name",
+                "arn:aws:sqs:region:account-id:dlq-name"
+            ]
+        }
+    ]
+}
+```
+
+You can also use AWS environment variables or instance profiles for authentication:
+
+```
+AWS_REGION=us-west-2
+AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+```
 
 <!-- Badges -->
 
