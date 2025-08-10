@@ -63,8 +63,8 @@ func NewWorker(store adapter.Store, config configuration.Config, queueName strin
 		concurrencySem: semaphore.NewWeighted(int64(config.ConcurrencyLimit)),
 		metricsChannel: make(chan configuration.JobMetrics, metricsBufferSize),
 		statsCollector: statsCollector,
-		logger:        logger,
-		handler:       handler,
+		logger:         logger,
+		handler:        handler,
 	}
 }
 
@@ -132,6 +132,10 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 				return
 			}
 
+			if job.Job == nil {
+				w.logger.Error("Received nil job, skipping", "workerID", workerID, "jobID", job.JobID)
+				continue
+			}
 			w.processJobSafely(ctx, workerID, job)
 		}
 	}
@@ -282,7 +286,6 @@ func (w *Worker) startMetricsWorker(ctx context.Context) {
 				}
 			default:
 				jobCtx, err := w.store.DequeueMetrics(w.queueName)
-				w.logger.Info("Metrics worker processing job", "jobID", jobCtx.JobID)
 				if (err == nil && jobCtx != config.JobMetrics{}) {
 					w.logger.Info("Metrics worker processing job: inside", "jobID", jobCtx.JobID)
 					w.config.OnJobComplete(jobCtx)

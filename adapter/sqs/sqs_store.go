@@ -71,6 +71,8 @@ type SQSStore struct {
 	healthStatus bool
 	// queueURLs maps queue names to their SQS URLs
 	queueURLs map[string]string
+	// jobReceiptHandles maps jobID to receiptHandle for Ack
+	jobReceiptHandles map[string]string
 }
 
 // NewSQSStore creates a new SQS-backed store implementation
@@ -128,12 +130,13 @@ func NewSQSStore(cfg jobConfig.Config, logger logger.Logger) (*SQSStore, error) 
 	}
 
 	store := &SQSStore{
-		client:       client,
-		config:       cfg,
-		sqsConfig:    sqsCfg,
-		logger:       logger,
-		healthStatus: true, // Start with healthy status
-		queueURLs:    make(map[string]string),
+		client:            client,
+		config:            cfg,
+		sqsConfig:         sqsCfg,
+		logger:            logger,
+		healthStatus:      true, // Start with healthy status
+		queueURLs:         make(map[string]string),
+		jobReceiptHandles: make(map[string]string),
 	}
 
 	// Store the main queue URL
@@ -153,10 +156,10 @@ func NewSQSStoreWithClient(client SQSClient, sqsCfg jobConfig.SQSConfig, cfg job
 		healthStatus: true,
 		queueURLs:    make(map[string]string),
 	}
-	
+
 	// Store the main queue URL
 	store.queueURLs[""] = sqsCfg.QueueURL
-	
+
 	return store
 }
 
@@ -388,6 +391,8 @@ func (s *SQSStore) Pop(queueName string) (job.JobContext, error) {
 
 	// Store the receipt handle for later acknowledgment
 	sqsJob.ReceiptHandle = *message.ReceiptHandle
+	// Set jobReceiptHandles mapping for Ack
+	s.jobReceiptHandles[sqsJob.ID] = *message.ReceiptHandle
 
 	// Get the job type constructor
 	newJobFunc, ok := registry.GetFromRegistery(sqsJob.JobName)
@@ -398,6 +403,10 @@ func (s *SQSStore) Pop(queueName string) (job.JobContext, error) {
 
 	// Create a new job instance and unmarshal the job data
 	jobInstance := newJobFunc()
+	if jobInstance == nil {
+		s.logger.Error("Job constructor returned nil", "jobName", sqsJob.JobName, "queue", queueName)
+		return job.JobContext{}, fmt.Errorf("job constructor returned nil for jobName: %s", sqsJob.JobName)
+	}
 	if err := json.Unmarshal(sqsJob.Job, jobInstance); err != nil {
 		s.logger.Error("Failed to decode job into type", "jobName", sqsJob.JobName, "error", err, "queue", queueName)
 		return job.JobContext{}, fmt.Errorf("failed to decode job into type %s: %w", sqsJob.JobName, err)
@@ -414,15 +423,15 @@ func (s *SQSStore) Pop(queueName string) (job.JobContext, error) {
 
 // Ack acknowledges a job has been processed
 func (s *SQSStore) Ack(queueName string, jobID string) error {
-	// Find the receipt handle for this job ID
-	receiptHandle, err := s.getReceiptHandle(queueName, jobID)
-	if err != nil {
-		s.logger.Error("Failed to get receipt handle", "error", err, "jobID", jobID, "queue", queueName)
-		return err
+	// Use the stored receipt handle for this job ID
+	receiptHandle, ok := s.jobReceiptHandles[jobID]
+	if !ok {
+		s.logger.Error("Failed to get receipt handle", "error", "receipt handle not found for job ID", "jobID", jobID, "queue", queueName)
+		return fmt.Errorf("receipt handle not found for job ID: %s", jobID)
 	}
 
 	// Delete the message from the queue
-	_, err = s.client.DeleteMessage(context.Background(), &sqs.DeleteMessageInput{
+	_, err := s.client.DeleteMessage(context.Background(), &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(s.getQueueURL(queueName)),
 		ReceiptHandle: aws.String(receiptHandle),
 	})
@@ -432,6 +441,9 @@ func (s *SQSStore) Ack(queueName string, jobID string) error {
 		s.logger.Error("Failed to delete message from SQS", "error", err, "jobID", jobID, "queue", queueName)
 		return fmt.Errorf("failed to delete message from SQS: %w", err)
 	}
+
+	// Remove the mapping after successful ack
+	delete(s.jobReceiptHandles, jobID)
 
 	s.logger.Info("Job acknowledged and removed from SQS", "jobID", jobID, "queue", queueName)
 	return nil

@@ -77,6 +77,7 @@ type Config struct {
 	// JobTimeout is the default timeout for job execution (can be overridden per job)
 	JobTimeout time.Duration
 }
+
 // RedisConfig contains configuration options specific to the Redis driver.
 type RedisConfig struct {
 	// Addr is the Redis server address (e.g., "localhost:6379")
@@ -165,11 +166,11 @@ func NewSQSConfig(queueURL, region, accessKeyID, secretAccessKey string) Config 
 	return Config{
 		Driver: DriverSQS,
 		DriverConfig: SQSConfig{
-			QueueURL:        queueURL,
-			Region:          region,
-			AccessKeyID:     accessKeyID,
-			SecretAccessKey: secretAccessKey,
-			MaxMessages:     1, // Default to 1 message at a time
+			QueueURL:          queueURL,
+			Region:            region,
+			AccessKeyID:       accessKeyID,
+			SecretAccessKey:   secretAccessKey,
+			MaxMessages:       1,                // Default to 1 message at a time
 			VisibilityTimeout: 30 * time.Second, // Default visibility timeout
 		},
 		MaxWorkers:         sensibleDefaultMaxWorkers(),
@@ -266,6 +267,8 @@ func (c Config) Validate(logger logger.Logger) error {
 	case DriverMemory:
 		return nil
 	case DriverRedis:
+		return nil
+	case DriverSQS:
 		return nil
 	default:
 		logger.Error("unsupported driver", "Driver", c.Driver)
