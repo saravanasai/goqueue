@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
-	"github.com/google/uuid"
+	"github.com/saravanasai/goqueue/adapter/utils"
 	jobConfig "github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/internal/registry"
@@ -179,7 +179,7 @@ func (s *SQSStore) Push(queueName string, jb job.Job) error {
 	}
 
 	// Create a job ID
-	jobID := generateID()
+	jobID := utils.GenerateID()
 
 	// Create the SQS message
 	sqsJob := SQSQueuedJob{
@@ -276,7 +276,7 @@ func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 		}
 
 		// Create a job ID
-		jobID := generateID()
+		jobID := utils.GenerateID()
 
 		// Create the SQS message
 		sqsJob := SQSQueuedJob{
@@ -606,9 +606,4 @@ func getJobName(jb job.Job) string {
 		t = t.Elem()
 	}
 	return t.Name()
-}
-
-// generateID creates a new unique ID for a job
-func generateID() string {
-	return uuid.New().String()
 }

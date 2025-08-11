@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/saravanasai/goqueue/adapter/utils"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/internal/manager"
@@ -77,7 +78,7 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 	meta := job.RedisQueuedJob{
 		Job:        jobPayload,
 		JobName:    jobName,
-		ID:         generateID(),
+		ID:         utils.GenerateID(),
 		EnqueuedAt: time.Now(),
 		RetryCount: 0,
 	}
@@ -117,7 +118,7 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 		meta := job.RedisQueuedJob{
 			Job:        jobPayload,
 			JobName:    jobName,
-			ID:         generateID(),
+			ID:         utils.GenerateID(),
 			EnqueuedAt: time.Now(),
 			RetryCount: 0,
 		}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/saravanasai/goqueue/adapter/utils"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/job"
@@ -30,7 +31,7 @@ func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
 	}
 	meta := job.QueuedJob{
 		Job:        jb,
-		ID:         generateID(),
+		ID:         utils.GenerateID(),
 		EnqueuedAt: time.Now(),
 		RetryCount: 0,
 	}
@@ -48,7 +49,7 @@ func (store *InMemoryStore) PushBatch(queueName string, jobs []job.Job) error {
 	for _, jb := range jobs {
 		meta := job.QueuedJob{
 			Job:        jb,
-			ID:         generateID(),
+			ID:         utils.GenerateID(),
 			EnqueuedAt: time.Now(),
 			RetryCount: 0,
 		}
