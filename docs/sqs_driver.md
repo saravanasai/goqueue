@@ -12,7 +12,6 @@ The AWS SQS driver allows GoQueue to use Amazon Simple Queue Service (SQS) as a 
 - Configurable MaxMessages (1-10) for batch receiving
 - Configurable VisibilityTimeout for message processing
 - Support for message attributes to store job metadata
-- Dead Letter Queue (DLQ) support for failed jobs
 - Automatic credential loading from environment or instance profiles
 - Health checking for SQS connection
 
@@ -25,16 +24,6 @@ cfg := config.NewSQSConfig(
     "us-west-2",                                                 // region
     "AKIAIOSFODNN7EXAMPLE",                                      // accessKeyID (optional)
     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"                  // secretAccessKey (optional)
-)
-
-// With DLQ support
-cfg := sqs.NewSQSConfigWithDLQ(
-    "https://sqs.us-west-2.amazonaws.com/123456789012/my-queue", // queueURL
-    "https://sqs.us-west-2.amazonaws.com/123456789012/my-dlq",   // dlqURL
-    "us-west-2",                                                 // region
-    "",                                                          // accessKeyID (use env or instance profile)
-    "",                                                          // secretAccessKey (use env or instance profile)
-    logger                                                       // logger instance
 )
 
 // Configure MaxMessages and VisibilityTimeout
@@ -56,14 +45,6 @@ SQS messages include:
 ### Acknowledgment
 
 When a job completes successfully, the message is deleted from SQS using the receipt handle.
-
-### Dead Letter Queue
-
-Failed jobs (after max retries) are sent to a Dead Letter Queue if configured. The DLQ message includes:
-
-- Original job data
-- Error information
-- Metadata (job ID, queue name, timestamp)
 
 ### Authentication
 
@@ -93,11 +74,12 @@ The SQS driver requires the following AWS permissions:
         "sqs:SendMessageBatch"
       ],
       "Resource": [
-        "arn:aws:sqs:region:account-id:queue-name",
-        "arn:aws:sqs:region:account-id:dlq-name"
+        "arn:aws:sqs:region:account-id:queue-name"
       ]
     }
   ]
+}
+```
 }
 ```
 

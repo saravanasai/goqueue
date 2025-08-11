@@ -10,6 +10,7 @@ import (
 
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/adapter/memory"
+	"github.com/saravanasai/goqueue/adapter/redis"
 	"github.com/saravanasai/goqueue/adapter/sqs"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/dispatcher"
@@ -72,7 +73,7 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 		redisMgr := manager.NewRedisClientManager(redisCfg.Addr, redisCfg.Password, redisCfg.Db, logger)
 		redisMgr.StartPeriodicHealthCheck(queueCtx)
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
-		store = memory.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Db, logger)
+		store = redis.NewRedisStore(client, cfg, redisMgr, redisCfg.Addr, redisCfg.Db, logger)
 	case config.DriverSQS:
 		var err error
 		store, err = sqs.NewSQSStore(cfg, logger)
@@ -130,7 +131,7 @@ func (q *Queue) StartWorkers(ctx context.Context, count int) {
 // For Redis-backed queues, this includes checking the Redis connection health.
 func (q *Queue) IsHealthy() bool {
 	if q.config.Driver == config.DriverRedis {
-		if redisStore, ok := q.store.(*memory.RedisStore); ok {
+		if redisStore, ok := q.store.(*redis.RedisStore); ok {
 			return redisStore.IsHealthy()
 		}
 	}

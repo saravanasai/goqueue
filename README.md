@@ -194,15 +194,6 @@ redisDLQ := dlq.NewRedisDLQ(redisClient, logger)
 cfg := config.NewRedisConfig("localhost:6379", "", 0).
     WithDLQAdapter(redisDLQ)
 
-// Using the AWS SQS DLQ adapter
-awsConfig, _ := config.LoadDefaultConfig(context.Background(),
-    config.WithRegion("us-west-2"),
-)
-sqsClient := sqs.NewFromConfig(awsConfig)
-sqsDLQ := dlq.NewSQSDLQ(sqsClient, "https://sqs.us-west-2.amazonaws.com/123456789012/my-dlq", logger)
-cfg := config.NewSQSConfig("https://sqs.us-west-2.amazonaws.com/123456789012/my-queue", "us-west-2", "", "").
-    WithDLQAdapter(sqsDLQ)
-
 // Custom DLQ implementation
 type MyCustomDLQ struct {
     // your implementation
@@ -319,8 +310,7 @@ Example IAM policy:
                 "sqs:SendMessageBatch"
             ],
             "Resource": [
-                "arn:aws:sqs:region:account-id:queue-name",
-                "arn:aws:sqs:region:account-id:dlq-name"
+                "arn:aws:sqs:region:account-id:queue-name"
             ]
         }
     ]
