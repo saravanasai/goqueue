@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./assets/logo.png" alt="GoQueue Logo" width="500"/>
+</p>
+
 # GoQueue
 
 A lightweight, high-performance job queue library for Go applications with support for multiple backends and built-in metrics.
