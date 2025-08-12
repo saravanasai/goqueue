@@ -5,6 +5,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/saravanasai/goqueue/job"
 )
@@ -71,5 +72,11 @@ func Chain(middlewares ...Middleware) HandlerFunc {
 // This is always the last handler in the chain and actually processes the job.
 // It simply calls the Process method of the job implementation.
 func DefaultHandler(ctx context.Context, jobCtx *job.JobContext) error {
+	if jobCtx == nil {
+		return fmt.Errorf("job context is nil")
+	}
+	if jobCtx.Job == nil {
+		return fmt.Errorf("job is nil")
+	}
 	return jobCtx.Job.Process(ctx)
 }

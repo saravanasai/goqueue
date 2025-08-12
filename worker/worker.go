@@ -105,11 +105,13 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 	w.logger.Info("Worker started", "workerID", workerID, "queue", w.queueName)
 
 	for {
+		// Check for shutdown signal
 		if atomic.LoadInt32(&w.isShuttingDown) == 1 {
 			w.logger.Info("Worker stopping - no new jobs during shutdown", "workerID", workerID)
 			return
 		}
 
+		// Check for context cancellation or explicit shutdown
 		select {
 		case <-ctx.Done():
 			w.logger.Info("Worker shutting down - context canceled", "workerID", workerID)
@@ -120,24 +122,32 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 			return
 
 		default:
-			job, err := w.store.Pop(w.queueName)
-			if err != nil {
-				w.logger.Error("Worker pop error", "workerID", workerID, "error", err)
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-
-			if atomic.LoadInt32(&w.isShuttingDown) == 1 {
-				w.logger.Info("Worker dropping job - shutdown in progress", "workerID", workerID, "jobID", job.JobID)
-				return
-			}
-
-			if job.Job == nil {
-				w.logger.Error("Received nil job, skipping", "workerID", workerID, "jobID", job.JobID)
-				continue
-			}
-			w.processJobSafely(ctx, workerID, job)
+			// Continue processing
 		}
+
+		// Try to get a job
+		job, err := w.store.Pop(w.queueName)
+		if err != nil {
+			// No jobs available, sleep briefly to avoid spinning
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Check again if shutdown was initiated while we were fetching the job
+		if atomic.LoadInt32(&w.isShuttingDown) == 1 {
+			w.logger.Info("Worker dropping job - shutdown in progress", "workerID", workerID, "jobID", job.JobID)
+			return
+		}
+
+		// Validate job
+		if job.Job == nil {
+			w.logger.Error("Received nil job, skipping", "workerID", workerID, "jobID", job.JobID)
+			continue
+		}
+
+		// Process the job
+		w.logger.Info("Processing job", "workerID", workerID, "jobID", job.JobID, "jobType", fmt.Sprintf("%T", job.Job))
+		w.processJobSafely(ctx, workerID, job)
 	}
 }
 
@@ -153,11 +163,13 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 		}
 	}()
 
-	defer w.concurrencySem.Release(1)
+	// Acquire the semaphore before processing
 	if err := w.concurrencySem.Acquire(ctx, 1); err != nil {
 		w.logger.Error("Failed to acquire concurrency semaphore", "workerID", workerID, "jobID", job.JobID, "error", err)
 		return
 	}
+	// Release the semaphore after processing
+	defer w.concurrencySem.Release(1)
 
 	isCollectorEnabled := w.config.StatsEnabled && w.statsCollector != nil
 	if isCollectorEnabled {
@@ -179,7 +191,10 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 	for attempt = 1; attempt <= maxAttempts; attempt++ {
 		startTime := time.Now()
 		execCtx := ctx
-		cancel := func() {}
+		// Empty cancel function that will be replaced if we create a timeout context
+		cancel := func() {
+			// Empty by default, will be replaced with actual cancel function if timeout is set
+		}
 		if timeout > 0 {
 			execCtx, cancel = context.WithTimeout(ctx, timeout)
 		}
@@ -306,7 +321,6 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 	atomic.StoreInt32(&w.isShuttingDown, 1)
 
 	// Broadcast shutdown signal to ALL workers
-	// close() makes ALL receivers of shutdownCh immediately unblock
 	close(w.shutdownCh)
 
 	// PHASE 2: Wait for workers to finish current jobs
