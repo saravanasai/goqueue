@@ -4,9 +4,6 @@
   <p><em>A lightweight, high-performance job queue library for Go applications</em></p>
   
   <p>
-    <a href="https://github.com/saravanasai/goqueue/actions/workflows/ci.yml">
-      <img src="https://github.com/saravanasai/goqueue/actions/workflows/ci.yml/badge.svg" alt="Build Status">
-    </a>
     <a href="https://pkg.go.dev/github.com/saravanasai/goqueue">
       <img src="https://pkg.go.dev/badge/github.com/saravanasai/goqueue.svg" alt="Go Reference">
     </a>
@@ -324,22 +321,20 @@ Example IAM policy:
 
 ```json
 {
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "sqs:SendMessage",
-                "sqs:ReceiveMessage",
-                "sqs:DeleteMessage",
-                "sqs:GetQueueAttributes",
-                "sqs:SendMessageBatch"
-            ],
-            "Resource": [
-                "arn:aws:sqs:region:account-id:queue-name"
-            ]
-        }
-    ]
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sqs:SendMessage",
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:SendMessageBatch"
+      ],
+      "Resource": ["arn:aws:sqs:region:account-id:queue-name"]
+    }
+  ]
 }
 ```
 
@@ -399,13 +394,6 @@ if err != nil {
 ```
 
 Note: For large payloads (>256KB), you'll need to implement your own storage solution (like S3) and store a reference in the job.
-
-<!-- Badges -->
-
-![Build Status](https://github.com/saravanasai/goqueue/actions/workflows/ci.yml/badge.svg)
-[![Go Reference](https://pkg.go.dev/badge/github.com/saravanasai/goqueue.svg)](https://pkg.go.dev/github.com/saravanasai/goqueue)
-![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ## Contributing
 
