@@ -1,10 +1,23 @@
-<p align="center">
-  <img src="./assets/logo.png" alt="GoQueue Logo" width="500"/>
-</p>
+<div align="center">
+  <img src="./assets/logo.png" alt="GoQueue Logo" width="180"/>
+  <h1>GoQueue</h1>
+  <p><em>A lightweight, high-performance job queue library for Go applications</em></p>
+  
+  <p>
+    <a href="https://github.com/saravanasai/goqueue/actions/workflows/ci.yml">
+      <img src="https://github.com/saravanasai/goqueue/actions/workflows/ci.yml/badge.svg" alt="Build Status">
+    </a>
+    <a href="https://pkg.go.dev/github.com/saravanasai/goqueue">
+      <img src="https://pkg.go.dev/badge/github.com/saravanasai/goqueue.svg" alt="Go Reference">
+    </a>
+    <a href="LICENSE">
+      <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT">
+    </a>
+    <img src="https://img.shields.io/badge/coverage-100%25-brightgreen.svg" alt="Coverage">
+  </p>
+</div>
 
-# GoQueue
-
-A lightweight, high-performance job queue library for Go applications with support for multiple backends and built-in metrics.
+<hr style="margin-bottom: 20px;">
 
 ## Features
 
