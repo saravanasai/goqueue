@@ -107,6 +107,14 @@ type SQSConfig struct {
 	MaxMessages int
 	// VisibilityTimeout is the duration that messages are hidden from subsequent retrieve requests
 	VisibilityTimeout time.Duration
+	// IsFifo indicates whether the SQS queue is a FIFO queue
+	IsFifo bool
+	// MessageGroupID is the FIFO queue message group ID (required for FIFO queues)
+	// If not specified, a default value of "default" will be used for FIFO queues
+	MessageGroupID string
+	// MessageDeduplicationID is used for FIFO queues to prevent duplicate messages (optional)
+	// If not specified, a unique ID will be generated automatically for each message
+	MessageDeduplicationID string
 }
 
 // Type implements the DriverConfig interface.
@@ -161,7 +169,7 @@ func NewRedisConfig(address string, password string, db int) Config {
 }
 
 // NewSQSConfig creates a new Config instance with AWS SQS driver and sensible defaults.
-// This is suitable for production environments with AWS SQS.
+// This is suitable for production environments with AWS SQS standard queues.
 func NewSQSConfig(queueURL, region, accessKeyID, secretAccessKey string) Config {
 	return Config{
 		Driver: DriverSQS,
@@ -172,6 +180,41 @@ func NewSQSConfig(queueURL, region, accessKeyID, secretAccessKey string) Config 
 			SecretAccessKey:   secretAccessKey,
 			MaxMessages:       1,                // Default to 1 message at a time
 			VisibilityTimeout: 30 * time.Second, // Default visibility timeout
+			IsFifo:            false,
+		},
+		MaxWorkers:         sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:      nil,
+		MaxRetryAttempts:   3,
+		RetryDelay:         2 * time.Second,
+		ExponentialBackoff: false,
+	}
+}
+
+// NewSQSFifoConfig creates a new Config instance with AWS SQS FIFO queue driver.
+// This is suitable for production environments requiring exactly-once processing
+// and message ordering guarantees.
+//
+// The queueURL must be for a FIFO queue, which should end with .fifo
+// messageGroupID is required for FIFO queues and defines which group of messages should be processed in order.
+// If messageGroupID is empty, "default" will be used.
+func NewSQSFifoConfig(queueURL, region, accessKeyID, secretAccessKey, messageGroupID string) Config {
+	// If messageGroupID is not provided, use a default value
+	if messageGroupID == "" {
+		messageGroupID = "default"
+	}
+
+	return Config{
+		Driver: DriverSQS,
+		DriverConfig: SQSConfig{
+			QueueURL:          queueURL,
+			Region:            region,
+			AccessKeyID:       accessKeyID,
+			SecretAccessKey:   secretAccessKey,
+			MaxMessages:       1,                // Default to 1 message at a time
+			VisibilityTimeout: 30 * time.Second, // Default visibility timeout
+			IsFifo:            true,
+			MessageGroupID:    messageGroupID,
 		},
 		MaxWorkers:         sensibleDefaultMaxWorkers(),
 		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),

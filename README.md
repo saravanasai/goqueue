@@ -141,6 +141,15 @@ cfg := config.NewSQSConfig(
     "AKIAIOSFODNN7EXAMPLE",                                       // accessKeyID (optional, can use instance profile)
     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"                   // secretAccessKey (optional)
 )
+
+// AWS SQS FIFO Queue Backend
+cfg := config.NewSQSFifoConfig(
+    "https://sqs.us-west-2.amazonaws.com/123456789012/my-queue.fifo",  // queueURL (must end with .fifo)
+    "us-west-2",                                                       // region
+    "AKIAIOSFODNN7EXAMPLE",                                            // accessKeyID (optional)
+    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",                       // secretAccessKey (optional)
+    "default-group"                                                    // messageGroupID (required for FIFO queues)
+)
 ```
 
 ### Concurrency Configuration
@@ -324,6 +333,55 @@ AWS_REGION=us-west-2
 AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE
 AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
+
+## Using AWS SQS FIFO Queues
+
+AWS SQS FIFO (First-In-First-Out) queues provide exactly-once processing and message ordering guarantees. GoQueue supports FIFO queues with a dedicated configuration function.
+
+### Configuration
+
+```go
+// Create a FIFO queue configuration with required MessageGroupID
+cfg := config.NewSQSFifoConfig(
+    "https://sqs.us-west-2.amazonaws.com/123456789012/my-queue.fifo",  // queueURL (must end with .fifo)
+    "us-west-2",                                                       // region
+    "AKIAIOSFODNN7EXAMPLE",                                            // accessKeyID (optional)
+    "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",                       // secretAccessKey (optional)
+    "order-processing"                                                 // messageGroupID
+)
+
+// Optional: Customize the MessageDeduplicationID
+sqsCfg := cfg.DriverConfig.(config.SQSConfig)
+sqsCfg.MessageDeduplicationID = "custom-dedup-id"  // If not set, job ID is used
+cfg.DriverConfig = sqsCfg
+
+// Create and use the queue as normal
+q, err := goqueue.NewQueueWithDefaults("orders", cfg)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### MessageGroupID and MessageDeduplicationID
+
+- **MessageGroupID**: Required for FIFO queues. Messages with the same MessageGroupID are processed in the order they are sent. If not specified, "default" is used.
+
+- **MessageDeduplicationID**: Optional for FIFO queues. Ensures message uniqueness within a 5-minute deduplication interval. If not specified, the job ID is used, ensuring each message is unique.
+
+### Size Limit Validation
+
+GoQueue validates that job payloads do not exceed the AWS SQS message size limit of 256KB. If a job exceeds this limit, an error is returned:
+
+```go
+// This will return an error if jobData exceeds 256KB
+err := goqueue.Dispatch(q, jobWithLargePayload)
+if err != nil {
+    // Handle the error - implement your own S3 offloading logic if needed
+    log.Printf("Job too large for SQS: %v", err)
+}
+```
+
+Note: For large payloads (>256KB), you'll need to implement your own storage solution (like S3) and store a reference in the job.
 
 <!-- Badges -->
 

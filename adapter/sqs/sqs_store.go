@@ -178,6 +178,12 @@ func (s *SQSStore) Push(queueName string, jb job.Job) error {
 		return fmt.Errorf("failed to marshal job: %w", err)
 	}
 
+	// Check if payload exceeds SQS message size limit (256KB)
+	if len(jobData) > 256*1024 {
+		s.logger.Error("Job payload exceeds SQS message size limit (256KB)", "size", len(jobData), "queue", queueName)
+		return fmt.Errorf("job payload size (%d bytes) exceeds AWS SQS limit of 256KB", len(jobData))
+	}
+
 	// Create a job ID
 	jobID := utils.GenerateID()
 
@@ -220,12 +226,35 @@ func (s *SQSStore) Push(queueName string, jb job.Job) error {
 		},
 	}
 
-	// Send the message to SQS
-	_, err = s.client.SendMessage(context.Background(), &sqs.SendMessageInput{
+	// Create the SendMessageInput
+	sendInput := &sqs.SendMessageInput{
 		QueueUrl:          aws.String(s.getQueueURL(queueName)),
 		MessageBody:       aws.String(string(messageBody)),
 		MessageAttributes: messageAttributes,
-	})
+	}
+
+	// Add FIFO queue specific attributes if the queue is FIFO
+	sqsCfg, ok := s.config.DriverConfig.(jobConfig.SQSConfig)
+	if ok && sqsCfg.IsFifo {
+		// For FIFO queues, MessageGroupId is required
+		messageGroupID := sqsCfg.MessageGroupID
+		if messageGroupID == "" {
+			messageGroupID = "default" // Default group if not specified
+		}
+		sendInput.MessageGroupId = aws.String(messageGroupID)
+
+		// MessageDeduplicationId is optional, but recommended
+		// If not provided, generate one based on the job ID
+		messageDeduplicationID := sqsCfg.MessageDeduplicationID
+		if messageDeduplicationID == "" {
+			// Use job ID as deduplication ID if not specified
+			messageDeduplicationID = jobID
+		}
+		sendInput.MessageDeduplicationId = aws.String(messageDeduplicationID)
+	}
+
+	// Send the message to SQS
+	_, err = s.client.SendMessage(context.Background(), sendInput)
 
 	if err != nil {
 		s.healthStatus = false
@@ -260,6 +289,10 @@ func (s *SQSStore) PushBatch(queueName string, jobs []job.Job) error {
 func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 	var entries []types.SendMessageBatchRequestEntry
 
+	// Get SQS configuration for FIFO settings
+	sqsCfg, isSQSConfig := s.config.DriverConfig.(jobConfig.SQSConfig)
+	isFifo := isSQSConfig && sqsCfg.IsFifo
+
 	for i, jb := range jobs {
 		// Get job name from type
 		jobName := getJobName(jb)
@@ -273,6 +306,12 @@ func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 		if err != nil {
 			s.logger.Error("Failed to marshal job", "error", err, "queue", queueName)
 			continue
+		}
+
+		// Check if payload exceeds SQS message size limit (256KB)
+		if len(jobData) > 256*1024 {
+			s.logger.Error("Job payload exceeds SQS message size limit (256KB)", "size", len(jobData), "queue", queueName)
+			return fmt.Errorf("job payload size (%d bytes) exceeds AWS SQS limit of 256KB", len(jobData))
 		}
 
 		// Create a job ID
@@ -317,12 +356,34 @@ func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 			},
 		}
 
-		// Add to batch entries
-		entries = append(entries, types.SendMessageBatchRequestEntry{
+		// Create the batch entry
+		entry := types.SendMessageBatchRequestEntry{
 			Id:                aws.String(strconv.Itoa(i)), // Batch message ID, not job ID
 			MessageBody:       aws.String(string(messageBody)),
 			MessageAttributes: messageAttributes,
-		})
+		}
+
+		// Add FIFO queue specific attributes if the queue is FIFO
+		if isFifo {
+			// For FIFO queues, MessageGroupId is required
+			messageGroupID := sqsCfg.MessageGroupID
+			if messageGroupID == "" {
+				messageGroupID = "default" // Default group if not specified
+			}
+			entry.MessageGroupId = aws.String(messageGroupID)
+
+			// MessageDeduplicationId is optional, but recommended
+			// If not provided, generate one based on the job ID
+			messageDeduplicationID := sqsCfg.MessageDeduplicationID
+			if messageDeduplicationID == "" {
+				// Use job ID as deduplication ID if not specified
+				messageDeduplicationID = jobID
+			}
+			entry.MessageDeduplicationId = aws.String(messageDeduplicationID)
+		}
+
+		// Add to batch entries
+		entries = append(entries, entry)
 	}
 
 	if len(entries) == 0 {
