@@ -342,4 +342,38 @@ Contributions, issues, and feature requests are welcome!
 4. Push to the branch (`git push origin feature/my-feature`)
 5. Open a pull request
 
+### Running Tests
+
+To run all tests in the project:
+
+```bash
+go test ./...
+```
+
+To run tests for a specific package:
+
+```bash
+go test ./worker
+go test ./queue
+go test ./adapter/memory
+```
+
+To run tests with verbose output:
+
+```bash
+go test -v ./...
+```
+
+For Redis adapter tests, you'll need a running Redis server:
+
+```bash
+# Start Redis in Docker
+docker run --name redis-test -p 6379:6379 -d redis
+
+# Run Redis tests
+go test ./adapter/redis
+```
+
+For SQS adapter tests, you'll need proper AWS credentials configured.
+
 Please read the [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and follow the guidelines. For major changes, open an issue first to discuss what you would like to change.
