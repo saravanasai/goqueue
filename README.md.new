@@ -164,7 +164,7 @@ queue.Use(rateLimiter, logger)
 ```go
 // Setup DLQ handler for permanently failed jobs
 dlqHandler := func(ctx context.Context, j goqueue.Job, err error) {
-    log.Printf("Job %s moved to DLQ after %d attempts: %v",
+    log.Printf("Job %s moved to DLQ after %d attempts: %v", 
         j.ID(), j.Attempts(), err)
     // Store in database, send alert, etc.
 }
