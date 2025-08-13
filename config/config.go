@@ -136,6 +136,12 @@ func sensibleDefaultConcurrencyLimit() int {
 
 // NewInMemoryConfig creates a new Config instance with in-memory driver and sensible defaults.
 // This is suitable for development and testing environments.
+//
+// The in-memory driver stores all jobs in memory and does not provide persistence
+// across application restarts. Jobs will be lost if the application terminates.
+//
+// Returns:
+//   - A Config instance configured with the in-memory driver
 func NewInMemoryConfig() Config {
 	return Config{
 		Driver:             DriverMemory,
@@ -151,6 +157,17 @@ func NewInMemoryConfig() Config {
 
 // NewRedisConfig creates a new Config instance with Redis driver and sensible defaults.
 // This is suitable for production environments.
+//
+// The Redis driver provides persistence and can be used in distributed environments
+// where multiple application instances need to share the same job queue.
+//
+// Parameters:
+//   - address: Redis server address (e.g., "localhost:6379")
+//   - password: Redis server password, or empty string if no password
+//   - db: Redis database number to use
+//
+// Returns:
+//   - A Config instance configured with the Redis driver
 func NewRedisConfig(address string, password string, db int) Config {
 	return Config{
 		Driver: DriverRedis,
@@ -170,6 +187,18 @@ func NewRedisConfig(address string, password string, db int) Config {
 
 // NewSQSConfig creates a new Config instance with AWS SQS driver and sensible defaults.
 // This is suitable for production environments with AWS SQS standard queues.
+//
+// The SQS driver provides fully managed message queuing with high availability and durability.
+// It's appropriate for cloud-based applications that need reliable message processing.
+//
+// Parameters:
+//   - queueURL: The URL of the SQS queue (from AWS console or API)
+//   - region: AWS region where the queue is located (e.g., "us-west-2")
+//   - accessKeyID: AWS access key ID for authentication, or empty to use environment/instance profile
+//   - secretAccessKey: AWS secret access key for authentication, or empty to use environment/instance profile
+//
+// Returns:
+//   - A Config instance configured with the SQS driver for standard queues
 func NewSQSConfig(queueURL, region, accessKeyID, secretAccessKey string) Config {
 	return Config{
 		Driver: DriverSQS,
@@ -195,9 +224,19 @@ func NewSQSConfig(queueURL, region, accessKeyID, secretAccessKey string) Config 
 // This is suitable for production environments requiring exactly-once processing
 // and message ordering guarantees.
 //
-// The queueURL must be for a FIFO queue, which should end with .fifo
-// messageGroupID is required for FIFO queues and defines which group of messages should be processed in order.
-// If messageGroupID is empty, "default" will be used.
+// FIFO (First-In-First-Out) queues provide additional guarantees compared to standard SQS queues:
+// - Messages are processed in the exact order they are sent
+// - Messages are delivered exactly once with no duplicates
+//
+// Parameters:
+//   - queueURL: The URL of the SQS FIFO queue (must end with .fifo)
+//   - region: AWS region where the queue is located (e.g., "us-west-2")
+//   - accessKeyID: AWS access key ID for authentication, or empty to use environment/instance profile
+//   - secretAccessKey: AWS secret access key for authentication, or empty to use environment/instance profile
+//   - messageGroupID: FIFO queue message group ID (required), defines which messages are processed in order
+//
+// Returns:
+//   - A Config instance configured with the SQS driver for FIFO queues
 func NewSQSFifoConfig(queueURL, region, accessKeyID, secretAccessKey, messageGroupID string) Config {
 	// If messageGroupID is not provided, use a default value
 	if messageGroupID == "" {
@@ -226,48 +265,126 @@ func NewSQSFifoConfig(queueURL, region, accessKeyID, secretAccessKey, messageGro
 }
 
 // WithStats enables or disables queue statistics collection.
+//
+// When enabled, the queue will collect metrics about job processing rates,
+// queue sizes, and health indicators. This is useful for monitoring
+// and debugging, but has a small performance cost.
+//
+// Parameters:
+//   - enabled: Whether to enable statistics collection
+//
+// Returns:
+//   - Updated Config with statistics collection setting
 func (c Config) WithStats(enabled bool) Config {
 	c.StatsEnabled = enabled
 	return c
 }
 
 // WithMaxWorkers sets the maximum number of concurrent worker goroutines.
+//
+// This controls how many worker goroutines will be spawned to process jobs.
+// Each worker can process one job at a time. The optimal number depends on
+// your workload and available resources.
+//
+// Parameters:
+//   - maxWorkers: Maximum number of worker goroutines to spawn
+//
+// Returns:
+//   - Updated Config with the max workers setting
 func (c Config) WithMaxWorkers(maxWorkers int) Config {
 	c.MaxWorkers = maxWorkers
 	return c
 }
 
 // WithConcurrencyLimit sets the maximum number of jobs that can be processed simultaneously.
+//
+// This controls the total number of jobs that can be in-process at once,
+// which may be different from the number of workers. This is useful for
+// rate limiting and preventing system overload.
+//
+// Parameters:
+//   - limit: Maximum number of concurrent jobs
+//
+// Returns:
+//   - Updated Config with the concurrency limit setting
 func (c Config) WithConcurrencyLimit(limit int) Config {
 	c.ConcurrencyLimit = limit
 	return c
 }
 
 // WithMetricsCallback sets the callback function for job completion metrics.
+//
+// This function will be called after every job completes, with metrics
+// including job ID, duration, error status, and timestamps. This is useful
+// for monitoring, alerting, and performance tracking.
+//
+// Parameters:
+//   - callback: Function to call with job metrics on completion
+//
+// Returns:
+//   - Updated Config with the metrics callback set
 func (c Config) WithMetricsCallback(callback MetricsCallback) Config {
 	c.OnJobComplete = callback
 	return c
 }
 
 // WithMaxRetryAttempts sets the number of times to retry a failed job.
+//
+// When a job fails with an error, it will be retried up to this many times
+// before being considered permanently failed and potentially sent to the DLQ.
+// Set to 0 to disable retries.
+//
+// Parameters:
+//   - attempts: Maximum number of retry attempts
+//
+// Returns:
+//   - Updated Config with the max retry attempts setting
 func (c Config) WithMaxRetryAttempts(attempts int) Config {
 	c.MaxRetryAttempts = attempts
 	return c
 }
 
 // WithRetryDelay sets the base delay between retry attempts.
+//
+// This is the initial delay between retry attempts. If exponential backoff
+// is enabled, this delay will increase with each retry attempt.
+//
+// Parameters:
+//   - delay: Base time to wait between retry attempts
+//
+// Returns:
+//   - Updated Config with the retry delay setting
 func (c Config) WithRetryDelay(delay time.Duration) Config {
 	c.RetryDelay = delay
 	return c
 }
 
 // WithExponentialBackoff enables or disables exponential increase of retry delays.
+//
+// When enabled, the delay between retry attempts will increase exponentially
+// based on the retry count. This helps to prevent overwhelming the system with
+// retry attempts when there are persistent issues.
+//
+// Parameters:
+//   - enabled: Whether to use exponential backoff for retries
+//
+// Returns:
+//   - Updated Config with the exponential backoff setting
 func (c Config) WithExponentialBackoff(enabled bool) Config {
 	c.ExponentialBackoff = enabled
 	return c
 }
 
 // WithDLQAdapter sets the Dead Letter Queue adapter for handling failed jobs.
+//
+// A Dead Letter Queue (DLQ) is used to store jobs that have failed after exceeding
+// their retry attempts. This allows for later analysis, debugging, or manual reprocessing.
+//
+// Parameters:
+//   - adapter: An implementation of the dlq.DLQAdapter interface
+//
+// Returns:
+//   - Updated Config with the DLQ adapter set
 func (c Config) WithDLQAdapter(adapter dlq.DLQAdapter) Config {
 	c.DLQAdapter = adapter
 	return c
@@ -275,6 +392,15 @@ func (c Config) WithDLQAdapter(adapter dlq.DLQAdapter) Config {
 
 // WithMiddleware adds a middleware to the processing chain.
 // Middlewares are executed in the order they are added.
+//
+// Middleware allows you to add cross-cutting functionality to job processing,
+// such as logging, metrics collection, validation, or rate limiting.
+//
+// Parameters:
+//   - m: The middleware function to add
+//
+// Returns:
+//   - Updated Config with the middleware added
 func (c Config) WithMiddleware(m middleware.Middleware) Config {
 	c.Middlewares = append(c.Middlewares, m)
 	return c
@@ -282,12 +408,29 @@ func (c Config) WithMiddleware(m middleware.Middleware) Config {
 
 // WithMiddlewares adds multiple middlewares to the processing chain.
 // Middlewares are executed in the order they are added.
+//
+// This is a convenience method for adding multiple middlewares at once.
+//
+// Parameters:
+//   - middlewares: One or more middleware functions to add
+//
+// Returns:
+//   - Updated Config with all the middlewares added
 func (c Config) WithMiddlewares(middlewares ...middleware.Middleware) Config {
 	c.Middlewares = append(c.Middlewares, middlewares...)
 	return c
 }
 
 // WithJobTimeout sets the default timeout for job execution.
+//
+// This sets the maximum duration that a job can run before it's considered timed out.
+// Individual jobs can override this timeout by setting their own timeout in the job context.
+//
+// Parameters:
+//   - timeout: The maximum duration for job execution
+//
+// Returns:
+//   - Updated Config with the job timeout set
 func (c Config) WithJobTimeout(timeout time.Duration) Config {
 	c.JobTimeout = timeout
 	return c
@@ -295,6 +438,17 @@ func (c Config) WithJobTimeout(timeout time.Duration) Config {
 
 // Validate checks if the configuration is valid.
 // It returns an error if any required fields are missing or invalid.
+//
+// This method verifies that the configuration has valid worker counts,
+// concurrency limits, and a supported driver type. It logs any validation
+// errors found.
+//
+// Parameters:
+//   - logger: Logger to record validation errors
+//
+// Returns:
+//   - nil if the configuration is valid
+//   - an error describing the validation failure
 func (c Config) Validate(logger logger.Logger) error {
 	if c.MaxWorkers <= 0 {
 		logger.Error("MaxWorkers must be greater than 0", "MaxWorkers", c.MaxWorkers)

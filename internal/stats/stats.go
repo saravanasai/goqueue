@@ -33,7 +33,17 @@ type StatsOptions struct {
 	OverloadRatio     float64       // Ratio of queued:processing jobs that indicates overload
 }
 
-// DefaultStatsOptions returns sensible defaults for stats collection
+// DefaultStatsOptions returns sensible defaults for stats collection.
+//
+// The default configuration:
+// - Disables stats collection by default
+// - Sets a 1-minute window for rate calculations
+// - Limits to 500 samples to prevent memory issues
+// - Sets an overload threshold of 1000 jobs
+// - Sets an overload ratio of 5.0 (5x more queued than processing jobs indicates overload)
+//
+// Returns:
+//   - A StatsOptions struct with default values
 func DefaultStatsOptions() StatsOptions {
 	return StatsOptions{
 		Enabled:           false,
