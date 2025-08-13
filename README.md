@@ -16,7 +16,7 @@ GoQueue is a flexible background job processing library for Go applications, des
 ## Features
 
 - **Multiple Backends**: In-memory (development), Redis (production), AWS SQS (cloud)
-- **Job Management**: Scheduling with delays, automatic retries with backoff, Dead Letter Queue
+- **Job Management**: automatic retries with backoff, Dead Letter Queue
 - **Concurrency Control**: Configurable worker pools, graceful shutdown
 - **Observability**: Metrics collection, logging support
 - **Extensibility**: Middleware pipeline for job customization
@@ -150,26 +150,79 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 
 ### Job Middleware
 
-```go
-// Define middleware
-rateLimiter := middleware.RateLimit(10) // Max 10 jobs per second
-logger := middleware.Logger(log.Default())
+Middleware allows you to add cross-cutting functionality to job processing. GoQueue uses a pipeline pattern where each middleware wraps the next one.
 
-// Apply middleware to queue
-queue.Use(rateLimiter, logger)
+```go
+// Available built-in middleware
+loggingMiddleware := middleware.LoggingMiddleware(logger) // Structured logging
+skipCondition := middleware.ConditionalSkipMiddleware(func(jobCtx *job.JobContext) bool {
+    // Skip processing based on job attributes
+    return jobCtx.EnqueuedAt.Before(time.Now().Add(-24 * time.Hour))
+})
+
+// Custom middleware
+rateLimiter := func(next middleware.HandlerFunc) middleware.HandlerFunc {
+    return func(ctx context.Context, jobCtx *job.JobContext) error {
+        // Implement rate limiting logic here
+        fmt.Println("Rate limiting job execution")
+        return next(ctx, jobCtx)
+    }
+}
+
+// Apply middleware through configuration (order matters - first added, first executed)
+cfg = cfg.WithMiddleware(loggingMiddleware)
+cfg = cfg.WithMiddleware(skipCondition)
+cfg = cfg.WithMiddleware(rateLimiter)
+
+// Or add multiple middlewares at once
+cfg = cfg.WithMiddlewares(loggingMiddleware, skipCondition, rateLimiter)
 ```
 
 ### Dead Letter Queue (DLQ)
 
+When jobs fail repeatedly after exhausting retry attempts, they can be sent to a Dead Letter Queue for analysis and handling.
+
 ```go
-// Setup DLQ handler for permanently failed jobs
-dlqHandler := func(ctx context.Context, j goqueue.Job, err error) {
-    log.Printf("Job %s moved to DLQ after %d attempts: %v",
-        j.ID(), j.Attempts(), err)
-    // Store in database, send alert, etc.
+// Option 1: Use a DLQ adapter (Redis or custom implementation)
+redisDLQ := redis_dlq.NewRedisDLQ(redisClient, "failed_jobs")
+cfg = cfg.WithDLQAdapter(redisDLQ)
+
+// Option 2: Custom handler for failed jobs
+type CustomDLQ struct{}
+
+func (d *CustomDLQ) Push(ctx context.Context, jobCtx *job.JobContext, err error) error {
+    // Store job data and error in database
+    fmt.Printf("Job %s failed after %d attempts: %v\n",
+        jobCtx.JobID, jobCtx.Attempts, err)
+
+    // Send alerts or notifications
+    // alertService.Send(fmt.Sprintf("Critical job failure: %s", jobCtx.JobID))
+
+    return nil
 }
 
-cfg = cfg.WithDeadLetterQueueHandler(dlqHandler)
+// Register custom DLQ
+cfg = cfg.WithDLQAdapter(&CustomDLQ{})
+```
+
+### Metrics and Observability
+
+GoQueue provides built-in support for collecting metrics and monitoring job processing:
+
+```go
+// Register metrics callback
+cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
+    // Record metrics in your monitoring system (Prometheus, etc.)
+    fmt.Printf("Job: %s, Queue: %s, Duration: %v, Error: %v\n",
+        metrics.JobID, metrics.QueueName, metrics.Duration, metrics.Error)
+
+    // Track success/failure rates
+    if metrics.Error != nil {
+        failureCounter.Inc()
+    } else {
+        successCounter.Inc()
+    }
+})
 ```
 
 ## License
