@@ -1,5 +1,3 @@
-// Package config provides configuration types and options for setting up and customizing
-// queue behavior, including driver selection, worker limits, retry policies, and middleware.
 package config
 
 import (

@@ -27,7 +27,9 @@ func (j *TestJob) Process(ctx context.Context) error {
 func registerTestJob() {
 	defer func() {
 		// Recover from panic if job is already registered
-		recover()
+		if r := recover(); r != nil {
+			// Job already registered, this is expected and can be ignored
+		}
 	}()
 	registry.Register("TestQueueJob", func() job.Job {
 		return &TestJob{}
@@ -44,7 +46,7 @@ func TestQueueCreation(t *testing.T) {
 		MaxWorkers:       2,
 		ConcurrencyLimit: 10,
 	}
-	
+
 	shutdownTimeout := 5 * time.Second
 	q, err := NewQueue("test_queue", cfg, shutdownTimeout)
 	if err != nil {
@@ -64,11 +66,11 @@ func TestQueueCreation(t *testing.T) {
 	if !q.IsHealthy() {
 		t.Error("Expected queue to be healthy")
 	}
-	
+
 	// Test queue shutdown
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	err = q.Shutdown(ctx)
 	if err != nil {
 		t.Errorf("Error shutting down queue: %v", err)
@@ -85,13 +87,17 @@ func TestQueueDispatch(t *testing.T) {
 		MaxWorkers:       2,
 		ConcurrencyLimit: 10,
 	}
-	
+
 	shutdownTimeout := 5 * time.Second
 	q, err := NewQueue(fmt.Sprintf("test_queue_dispatch_%d", time.Now().UnixNano()), cfg, shutdownTimeout)
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
-	defer q.Shutdown(context.Background())
+	defer func() {
+		if err := q.Shutdown(context.Background()); err != nil {
+			t.Logf("Error during shutdown: %v", err)
+		}
+	}()
 
 	// Create a test job
 	testJob := &TestJob{
@@ -124,13 +130,17 @@ func TestQueueBatchDispatch(t *testing.T) {
 		MaxWorkers:       2,
 		ConcurrencyLimit: 10,
 	}
-	
+
 	shutdownTimeout := 5 * time.Second
 	q, err := NewQueue(fmt.Sprintf("test_queue_batch_%d", time.Now().UnixNano()), cfg, shutdownTimeout)
 	if err != nil {
 		t.Fatalf("Failed to create queue: %v", err)
 	}
-	defer q.Shutdown(context.Background())
+	defer func() {
+		if err := q.Shutdown(context.Background()); err != nil {
+			t.Logf("Error during shutdown: %v", err)
+		}
+	}()
 
 	// Create test jobs
 	jobs := []job.Job{

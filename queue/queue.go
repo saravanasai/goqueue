@@ -123,8 +123,8 @@ func (q *Queue) DispatchBatch(jobs []job.Job) error {
 
 // StartWorkers launches the specified number of worker goroutines to process jobs.
 // The workers will continue running until the context is cancelled.
-func (q *Queue) StartWorkers(ctx context.Context, count int) {
-	q.worker.Start(ctx, count)
+func (q *Queue) StartWorkers(ctx context.Context, count int) error {
+	return q.worker.Start(ctx, count)
 }
 
 // IsHealthy checks if the queue and its backend storage are functioning properly.

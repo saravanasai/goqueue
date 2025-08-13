@@ -20,10 +20,10 @@ type RedisDLQ struct {
 
 type dlqEntry struct {
 	Job       json.RawMessage `json:"job"`
-	JobID     string         `json:"job_id"`
-	QueueName string         `json:"queue_name"`
-	Error     string         `json:"error"`
-	FailedAt  time.Time      `json:"failed_at"`
+	JobID     string          `json:"job_id"`
+	QueueName string          `json:"queue_name"`
+	Error     string          `json:"error"`
+	FailedAt  time.Time       `json:"failed_at"`
 }
 
 func NewRedisDLQ(client *redis.Client, logger logger.Logger) *RedisDLQ {

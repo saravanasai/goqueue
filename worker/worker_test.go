@@ -54,12 +54,12 @@ func TestWorkerProcessing(t *testing.T) {
 
 	// Set up test parameters
 	queueName := "test_queue"
-	
+
 	// Create memory store
 	store := memory.NewInMemoryStore(queueName, config.Config{
 		Driver: config.DriverMemory,
 	}, logger.NewZapLogger())
-	
+
 	// Create worker with increased timeout
 	w := NewWorker(store, config.Config{
 		Driver:           config.DriverMemory,
@@ -68,23 +68,23 @@ func TestWorkerProcessing(t *testing.T) {
 		MaxWorkers:       5,
 		ConcurrencyLimit: 10,
 	}, queueName, nil, logger.NewZapLogger())
-	
+
 	// Create a test job and push it to the store
 	testJob := &TestJob{ID: "test1", Data: "test data"}
 	err := store.Push(queueName, testJob)
 	if err != nil {
 		t.Fatalf("Failed to push job: %v", err)
 	}
-	
+
 	// Start worker with context that will last longer
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Start a single worker
 	if err := w.Start(ctx, 1); err != nil {
 		t.Fatalf("Failed to start worker: %v", err)
 	}
-	
+
 	// Wait for job to be processed - since we pushed the actual job object,
 	// we can directly check its processed state
 	deadline := time.Now().Add(2 * time.Second)
@@ -94,11 +94,11 @@ func TestWorkerProcessing(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	
+
 	if !testJob.IsProcessed() {
 		t.Error("Job was not processed within the expected time")
 	}
-	
+
 	// Test worker shutdown with longer timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer shutdownCancel()
@@ -108,14 +108,14 @@ func TestWorkerProcessing(t *testing.T) {
 func TestWorkerConcurrency(t *testing.T) {
 	// Register the test job
 	registerTestJob()
-	
+
 	queueName := fmt.Sprintf("test_queue_conc_%d", time.Now().UnixNano())
-	
+
 	// Create memory store
 	store := memory.NewInMemoryStore(queueName, config.Config{
 		Driver: config.DriverMemory,
 	}, logger.NewZapLogger())
-	
+
 	// Create worker with increased timeouts
 	w := NewWorker(store, config.Config{
 		Driver:           config.DriverMemory,
@@ -124,7 +124,7 @@ func TestWorkerConcurrency(t *testing.T) {
 		JobTimeout:       5 * time.Second,
 		MaxRetryAttempts: 1,
 	}, queueName, nil, logger.NewZapLogger())
-	
+
 	// Create multiple test jobs and store references to check them
 	jobs := make([]*TestJob, 5)
 	for i := 0; i < 5; i++ {
@@ -134,16 +134,16 @@ func TestWorkerConcurrency(t *testing.T) {
 			t.Fatalf("Failed to push job %d: %v", i, err)
 		}
 	}
-	
+
 	// Start workers with longer context
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	// Start multiple workers (3)
 	if err := w.Start(ctx, 3); err != nil {
 		t.Fatalf("Failed to start workers: %v", err)
 	}
-	
+
 	// Wait for all jobs to be processed or timeout
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -157,23 +157,23 @@ func TestWorkerConcurrency(t *testing.T) {
 				t.Logf("Job %d not yet processed", i)
 			}
 		}
-		
+
 		t.Logf("Processed %d out of %d jobs", processedCount, len(jobs))
-		
+
 		if allProcessed {
 			// All jobs processed
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	
+
 	// Check that all jobs were processed
 	for i, job := range jobs {
 		if !job.IsProcessed() {
 			t.Errorf("Job %d was not processed", i)
 		}
 	}
-	
+
 	// Test worker shutdown with longer timeout
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer shutdownCancel()

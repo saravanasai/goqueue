@@ -100,8 +100,11 @@ func DispatchBatch(q *queue.Queue, jobs []job.Job) error {
 //   - q: The queue to start workers for
 //   - ctx: Context used for cancellation and shutdown
 //   - count: Number of worker goroutines to start
-func StartWorker(q *queue.Queue, ctx context.Context, count int) {
-	q.StartWorkers(ctx, count)
+//
+// Returns:
+//   - Error if workers cannot be started
+func StartWorker(q *queue.Queue, ctx context.Context, count int) error {
+	return q.StartWorkers(ctx, count)
 }
 
 // Shutdown gracefully stops the queue, waiting for in-progress jobs to complete.

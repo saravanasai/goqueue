@@ -50,11 +50,13 @@ type Middleware func(next HandlerFunc) HandlerFunc
 //
 // The execution flow for a single job would be:
 // LoggingMiddleware
-//   → MetricsMiddleware
-//     → ValidationMiddleware
-//       → DefaultHandler (executes job.Process)
-//     ← ValidationMiddleware
-//   ← MetricsMiddleware
+//
+//	→ MetricsMiddleware
+//	  → ValidationMiddleware
+//	    → DefaultHandler (executes job.Process)
+//	  ← ValidationMiddleware
+//	← MetricsMiddleware
+//
 // ← LoggingMiddleware
 func Chain(middlewares ...Middleware) HandlerFunc {
 	// Start with the DefaultHandler

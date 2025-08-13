@@ -20,6 +20,7 @@ GoQueue is a flexible background job processing library for Go applications, des
 - **Concurrency Control**: Configurable worker pools, graceful shutdown
 - **Observability**: Metrics collection, logging support
 - **Extensibility**: Middleware pipeline for job customization
+- **Code Quality**: Configured with golangci-lint for high code quality standards
 
 For a deeper understanding of the system design, check out the [Architecture Documentation](docs/architecture.md).
 

@@ -158,70 +158,70 @@ func TestRedisPushOnly(t *testing.T) {
 
 // TestRedisPopAndAck tests the Pop and Ack operations
 func TestRedisPopAndAck(t *testing.T) {
-    // Setup miniredis for testing
-    miniRedis, client := setupTestRedis(t)
-    defer miniRedis.Close()
+	// Setup miniredis for testing
+	miniRedis, client := setupTestRedis(t)
+	defer miniRedis.Close()
 
-    testLogger := logger.NewZapLogger()
-    redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-    cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
-    store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
+	testLogger := logger.NewZapLogger()
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
-    // Create and push a test job
-    queueName := "test_queue_pop_ack"
-    testJob := &TestJob{ID: "test123", Data: "test data"}
-    err := store.Push(queueName, testJob)
-    if err != nil {
-        t.Fatalf("Error pushing job: %v", err)
-    }
+	// Create and push a test job
+	queueName := "test_queue_pop_ack"
+	testJob := &TestJob{ID: "test123", Data: "test data"}
+	err := store.Push(queueName, testJob)
+	if err != nil {
+		t.Fatalf("Error pushing job: %v", err)
+	}
 
-    // Test popping a job using the Pop function
-    jobCtx, err := store.Pop(queueName)
-    if err != nil {
-        t.Fatalf("Error popping job: %v", err)
-    }
-    if jobCtx.Job == nil {
-        t.Fatal("Expected to pop a job, got nil job in context")
-    }
+	// Test popping a job using the Pop function
+	jobCtx, err := store.Pop(queueName)
+	if err != nil {
+		t.Fatalf("Error popping job: %v", err)
+	}
+	if jobCtx.Job == nil {
+		t.Fatal("Expected to pop a job, got nil job in context")
+	}
 
-    // Verify the job ID exists
-    if jobCtx.JobID == "" {
-        t.Fatal("Expected job ID in context, got empty string")
-    }
+	// Verify the job ID exists
+	if jobCtx.JobID == "" {
+		t.Fatal("Expected job ID in context, got empty string")
+	}
 
-    // Verify job data
-    poppedTestJob, ok := jobCtx.Job.(*TestJob)
-    if !ok {
-        t.Fatalf("Expected *TestJob, got %T", jobCtx.Job)
-    }
-    if poppedTestJob.ID != "test123" || poppedTestJob.Data != "test data" {
-        t.Errorf("Job data mismatch. Got ID=%s, Data=%s", 
-                 poppedTestJob.ID, poppedTestJob.Data)
-    }
+	// Verify job data
+	poppedTestJob, ok := jobCtx.Job.(*TestJob)
+	if !ok {
+		t.Fatalf("Expected *TestJob, got %T", jobCtx.Job)
+	}
+	if poppedTestJob.ID != "test123" || poppedTestJob.Data != "test data" {
+		t.Errorf("Job data mismatch. Got ID=%s, Data=%s",
+			poppedTestJob.ID, poppedTestJob.Data)
+	}
 
-    // Test acknowledging a job
-    err = store.Ack(queueName, jobCtx.JobID)
-    if err != nil {
-        t.Fatalf("Error acknowledging job: %v", err)
-    }
+	// Test acknowledging a job
+	err = store.Ack(queueName, jobCtx.JobID)
+	if err != nil {
+		t.Fatalf("Error acknowledging job: %v", err)
+	}
 
-    // Verify the queue is now empty by trying to pop again
-    emptyJobCtx, err := store.Pop(queueName)
-    if err != nil {
-        t.Fatalf("Error on second pop: %v", err)
-    }
-    if emptyJobCtx.Job != nil {
-        t.Error("Expected nil job for empty queue, got non-nil")
-    }
+	// Verify the queue is now empty by trying to pop again
+	emptyJobCtx, err := store.Pop(queueName)
+	if err != nil {
+		t.Fatalf("Error on second pop: %v", err)
+	}
+	if emptyJobCtx.Job != nil {
+		t.Error("Expected nil job for empty queue, got non-nil")
+	}
 
-    // Verify processing queue is empty
-    processingQueueName := processingQueueName + queueName
-    processingQueueLen, err := client.LLen(context.Background(), processingQueueName).Result()
-    if err != nil {
-        t.Fatalf("Error getting processing queue length: %v", err)
-    }
-    if processingQueueLen != 0 {
-        t.Errorf("Expected processing queue to be empty, got length %d", 
-                 processingQueueLen)
-    }
+	// Verify processing queue is empty
+	processingQueueName := processingQueueName + queueName
+	processingQueueLen, err := client.LLen(context.Background(), processingQueueName).Result()
+	if err != nil {
+		t.Fatalf("Error getting processing queue length: %v", err)
+	}
+	if processingQueueLen != 0 {
+		t.Errorf("Expected processing queue to be empty, got length %d",
+			processingQueueLen)
+	}
 }

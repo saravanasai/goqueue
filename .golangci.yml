@@ -1,0 +1,54 @@
+linters:
+  enable:
+    - errcheck       # Checks for unchecked errors
+    - gosimple       # Simplifies code
+    - govet          # Reports suspicious constructs
+    - ineffassign    # Detects unused assignments
+    - staticcheck    # Go static analysis
+    - typecheck      # Type checking
+    - unused         # Checks for unused constants, variables, functions and types
+    - gofmt          # Formats code according to Go standards
+    - goimports      # Manages imports and formats code
+    - revive         # Fast, configurable, extensible, flexible, and beautiful linter
+    - misspell       # Finds commonly misspelled English words
+    - godot          # Check if comments end with a period
+    - gocyclo        # Computes and checks the cyclomatic complexity
+    - dupl           # Detects code clones
+    - unconvert      # Removes unnecessary type conversions
+    - goconst        # Finds repeated strings that could be constants
+    - prealloc       # Finds slice declarations that could pre-allocate
+    - unparam        # Reports unused function parameters
+
+linters-settings:
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+  govet:
+    check-shadowing: true
+  goimports:
+    local-prefixes: github.com/saravanasai/goqueue
+
+issues:
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - dupl
+        - gocyclo
+  max-same-issues: 20
+  max-issues-per-linter: 50
+
+run:
+  deadline: 5m
+  skip-dirs:
+    - vendor
+  skip-files:
+    - ".*\\.generated\\.go$"

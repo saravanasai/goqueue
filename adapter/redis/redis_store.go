@@ -91,7 +91,10 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 
 	ctx := context.Background()
 	indexKey := JobIndexKeyFormat + queueName
-	rs.client.HSet(ctx, indexKey, meta.ID, payload).Err()
+	if err := rs.client.HSet(ctx, indexKey, meta.ID, payload).Err(); err != nil {
+		rs.logger.Error("failed to set job in index", "error", err, "queue", queueName)
+		return err
+	}
 	return rs.client.LPush(ctx, queueName, payload).Err()
 }
 
@@ -127,7 +130,10 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 			rs.logger.Error("failed to marshal job metadata", "error", err, "queue", queueName)
 			continue
 		}
-		rs.client.HSet(ctx, indexKey, meta.ID, payload).Err()
+		if err := rs.client.HSet(ctx, indexKey, meta.ID, payload).Err(); err != nil {
+			rs.logger.Error("failed to set job in index", "error", err, "queue", queueName)
+			continue
+		}
 		payloads = append(payloads, payload)
 	}
 	if len(payloads) == 0 {
