@@ -92,7 +92,7 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 		return fmt.Errorf("redis instance is currently unhealthy, cannot push jobs")
 	}
 	ctx := context.Background()
-	indexKey := JobIndexKeyFormat + queueName
+	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 	var payloads []interface{}
 	for _, jb := range jobs {
 		jobName := utils.GetJobName(jb)
