@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"reflect"
 	"strconv"
 	"time"
 
@@ -166,7 +165,7 @@ func NewSQSStoreWithClient(client SQSClient, sqsCfg jobConfig.SQSConfig, cfg job
 // Push adds a single job to the queue
 func (s *SQSStore) Push(queueName string, jb job.Job) error {
 	// Get job name from type
-	jobName := getJobName(jb)
+	jobName := utils.GetJobName(jb)
 	if jobName == "" {
 		return fmt.Errorf("could not determine job name from type")
 	}
@@ -295,7 +294,7 @@ func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 
 	for i, jb := range jobs {
 		// Get job name from type
-		jobName := getJobName(jb)
+		jobName := utils.GetJobName(jb)
 		if jobName == "" {
 			s.logger.Error("Could not determine job name from type", "queue", queueName)
 			continue
@@ -655,16 +654,4 @@ func (s *SQSStore) getQueueURL(queueName string) string {
 	// In a real implementation, you might map queue names to different SQS queues
 	s.queueURLs[queueName] = s.sqsConfig.QueueURL
 	return s.sqsConfig.QueueURL
-}
-
-// getJobName returns the concrete type name of a job
-func getJobName(jb job.Job) string {
-	t := reflect.TypeOf(jb)
-	if t == nil {
-		return ""
-	}
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	return t.Name()
 }
