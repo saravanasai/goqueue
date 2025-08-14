@@ -148,12 +148,13 @@ func NewSQSStore(cfg jobConfig.Config, logger logger.Logger) (*SQSStore, error) 
 // This is primarily used for testing with mock clients
 func NewSQSStoreWithClient(client SQSClient, sqsCfg jobConfig.SQSConfig, cfg jobConfig.Config, logger logger.Logger) *SQSStore {
 	store := &SQSStore{
-		client:       client,
-		config:       cfg,
-		sqsConfig:    sqsCfg,
-		logger:       logger,
-		healthStatus: true,
-		queueURLs:    make(map[string]string),
+		client:            client,
+		config:            cfg,
+		sqsConfig:         sqsCfg,
+		logger:            logger,
+		healthStatus:      true,
+		queueURLs:         make(map[string]string),
+		jobReceiptHandles: make(map[string]string),
 	}
 
 	// Store the main queue URL
@@ -293,95 +294,15 @@ func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 	isFifo := isSQSConfig && sqsCfg.IsFifo
 
 	for i, jb := range jobs {
-		// Get job name from type
-		jobName := utils.GetJobName(jb)
-		if jobName == "" {
-			s.logger.Error("Could not determine job name from type", "queue", queueName)
-			continue
-		}
-
-		// Marshal the job data
-		jobData, err := json.Marshal(jb)
+		entry, ok, err := s.buildBatchEntry(jb, i, queueName, isFifo, sqsCfg)
 		if err != nil {
-			s.logger.Error("Failed to marshal job", "error", err, "queue", queueName)
+			s.logger.Error("failed to build batch entry", "error", err, "queue", queueName)
+			return err
+		}
+		if !ok {
+			// skipped (no job name or marshal error) continue to next
 			continue
 		}
-
-		// Check if payload exceeds SQS message size limit (256KB)
-		if len(jobData) > 256*1024 {
-			s.logger.Error("Job payload exceeds SQS message size limit (256KB)", "size", len(jobData), "queue", queueName)
-			return fmt.Errorf("job payload size (%d bytes) exceeds AWS SQS limit of 256KB", len(jobData))
-		}
-
-		// Create a job ID
-		jobID := utils.GenerateID()
-
-		// Create the SQS message
-		sqsJob := SQSQueuedJob{
-			Job:        jobData,
-			ID:         jobID,
-			JobName:    jobName,
-			EnqueuedAt: time.Now(),
-			RetryCount: 0,
-		}
-
-		messageBody, err := json.Marshal(sqsJob)
-		if err != nil {
-			s.logger.Error("Failed to marshal SQS job", "error", err, "queue", queueName)
-			continue
-		}
-
-		// Prepare message attributes
-		messageAttributes := map[string]types.MessageAttributeValue{
-			attrJobID: {
-				DataType:    aws.String("String"),
-				StringValue: aws.String(jobID),
-			},
-			attrQueueName: {
-				DataType:    aws.String("String"),
-				StringValue: aws.String(queueName),
-			},
-			attrJobName: {
-				DataType:    aws.String("String"),
-				StringValue: aws.String(jobName),
-			},
-			attrEnqueuedAt: {
-				DataType:    aws.String("String"),
-				StringValue: aws.String(fmt.Sprintf("%d", time.Now().UnixNano())),
-			},
-			attrRetryCount: {
-				DataType:    aws.String("Number"),
-				StringValue: aws.String("0"),
-			},
-		}
-
-		// Create the batch entry
-		entry := types.SendMessageBatchRequestEntry{
-			Id:                aws.String(strconv.Itoa(i)), // Batch message ID, not job ID
-			MessageBody:       aws.String(string(messageBody)),
-			MessageAttributes: messageAttributes,
-		}
-
-		// Add FIFO queue specific attributes if the queue is FIFO
-		if isFifo {
-			// For FIFO queues, MessageGroupId is required
-			messageGroupID := sqsCfg.MessageGroupID
-			if messageGroupID == "" {
-				messageGroupID = "default" // Default group if not specified
-			}
-			entry.MessageGroupId = aws.String(messageGroupID)
-
-			// MessageDeduplicationId is optional, but recommended
-			// If not provided, generate one based on the job ID
-			messageDeduplicationID := sqsCfg.MessageDeduplicationID
-			if messageDeduplicationID == "" {
-				// Use job ID as deduplication ID if not specified
-				messageDeduplicationID = jobID
-			}
-			entry.MessageDeduplicationId = aws.String(messageDeduplicationID)
-		}
-
-		// Add to batch entries
 		entries = append(entries, entry)
 	}
 
@@ -415,6 +336,97 @@ func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 	}
 
 	return nil
+}
+
+// buildBatchEntry prepares a SendMessageBatchRequestEntry for a job.
+// Returns (entry, true, nil) on success, (zero, false, nil) to indicate the job should be skipped,
+// or (zero, false, err) to indicate a fatal error (e.g., payload too large).
+func (s *SQSStore) buildBatchEntry(jb job.Job, idx int, queueName string, isFifo bool, sqsCfg jobConfig.SQSConfig) (types.SendMessageBatchRequestEntry, bool, error) {
+	var empty types.SendMessageBatchRequestEntry
+
+	// Get job name from type
+	jobName := utils.GetJobName(jb)
+	if jobName == "" {
+		s.logger.Error("Could not determine job name from type", "queue", queueName)
+		return empty, false, nil
+	}
+
+	// Marshal the job data
+	jobData, err := json.Marshal(jb)
+	if err != nil {
+		s.logger.Error("Failed to marshal job", "error", err, "queue", queueName)
+		return empty, false, nil
+	}
+
+	// Check if payload exceeds SQS message size limit (256KB)
+	if len(jobData) > 256*1024 {
+		s.logger.Error("Job payload exceeds SQS message size limit (256KB)", "size", len(jobData), "queue", queueName)
+		return empty, false, fmt.Errorf("job payload size (%d bytes) exceeds AWS SQS limit of 256KB", len(jobData))
+	}
+
+	// Create a job ID
+	jobID := utils.GenerateID()
+
+	// Create the SQS message
+	sqsJob := SQSQueuedJob{
+		Job:        jobData,
+		ID:         jobID,
+		JobName:    jobName,
+		EnqueuedAt: time.Now(),
+		RetryCount: 0,
+	}
+
+	messageBody, err := json.Marshal(sqsJob)
+	if err != nil {
+		s.logger.Error("Failed to marshal SQS job", "error", err, "queue", queueName)
+		return empty, false, nil
+	}
+
+	// Prepare message attributes
+	messageAttributes := map[string]types.MessageAttributeValue{
+		attrJobID: {
+			DataType:    aws.String("String"),
+			StringValue: aws.String(jobID),
+		},
+		attrQueueName: {
+			DataType:    aws.String("String"),
+			StringValue: aws.String(queueName),
+		},
+		attrJobName: {
+			DataType:    aws.String("String"),
+			StringValue: aws.String(jobName),
+		},
+		attrEnqueuedAt: {
+			DataType:    aws.String("String"),
+			StringValue: aws.String(fmt.Sprintf("%d", time.Now().UnixNano())),
+		},
+		attrRetryCount: {
+			DataType:    aws.String("Number"),
+			StringValue: aws.String("0"),
+		},
+	}
+
+	entry := types.SendMessageBatchRequestEntry{
+		Id:                aws.String(strconv.Itoa(idx)),
+		MessageBody:       aws.String(string(messageBody)),
+		MessageAttributes: messageAttributes,
+	}
+
+	if isFifo {
+		messageGroupID := sqsCfg.MessageGroupID
+		if messageGroupID == "" {
+			messageGroupID = "default"
+		}
+		entry.MessageGroupId = aws.String(messageGroupID)
+
+		messageDeduplicationID := sqsCfg.MessageDeduplicationID
+		if messageDeduplicationID == "" {
+			messageDeduplicationID = jobID
+		}
+		entry.MessageDeduplicationId = aws.String(messageDeduplicationID)
+	}
+
+	return entry, true, nil
 }
 
 // Pop retrieves a job from the queue
@@ -509,42 +521,6 @@ func (s *SQSStore) Ack(queueName string, jobID string) error {
 	return nil
 }
 
-// getReceiptHandle retrieves the SQS receipt handle for a job ID
-func (s *SQSStore) getReceiptHandle(queueName string, jobID string) (string, error) {
-	// In production code, you'd likely have a local cache/map that stores
-	// jobID -> receiptHandle mappings when jobs are received in Pop()
-
-	// For this implementation, we'll do a query to try to find the message
-	// This isn't efficient, but works for the demo
-
-	// Use a filter expression to find the message with the matching jobID
-	resp, err := s.client.ReceiveMessage(context.Background(), &sqs.ReceiveMessageInput{
-		QueueUrl:              aws.String(s.getQueueURL(queueName)),
-		MaxNumberOfMessages:   10, // Try to get multiple messages to increase chance of finding it
-		WaitTimeSeconds:       0,  // Don't block
-		VisibilityTimeout:     int32(s.sqsConfig.VisibilityTimeout.Seconds()),
-		MessageAttributeNames: []string{"All"},
-		// SQS doesn't support filtering on receive, so we need to check each message
-	})
-
-	if err != nil {
-		s.healthStatus = false
-		s.logger.Error("Failed to query SQS for message", "error", err, "jobID", jobID, "queue", queueName)
-		return "", fmt.Errorf("failed to query SQS for message: %w", err)
-	}
-
-	// Look through messages to find the one with matching jobID
-	for _, msg := range resp.Messages {
-		if msgJobID, ok := msg.MessageAttributes[attrJobID]; ok {
-			if *msgJobID.StringValue == jobID {
-				return *msg.ReceiptHandle, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("receipt handle not found for job ID: %s", jobID)
-}
-
 // Retry sends a job back to the queue with a delay
 func (s *SQSStore) Retry(job job.Job, delay time.Duration) error {
 	// SQS doesn't support arbitrary delay times, only a fixed delay of up to 15 minutes
@@ -625,16 +601,10 @@ func (s *SQSStore) DequeueMetrics(queueName string) (jobConfig.JobMetrics, error
 	return metrics, nil
 }
 
-// IsHealthy returns the health status of the SQS connection
+// IsHealthy returns the last known health status of the SQS connection.
+// It does not perform a potentially blocking network call; operational methods
+// (e.g., Push/Pop) update s.healthStatus when errors occur.
 func (s *SQSStore) IsHealthy() bool {
-	// If previously unhealthy, check connection again
-	if !s.healthStatus {
-		// Try to get queue attributes to test the connection
-		_, err := s.client.GetQueueAttributes(context.Background(), &sqs.GetQueueAttributesInput{
-			QueueUrl: aws.String(s.sqsConfig.QueueURL),
-		})
-		s.healthStatus = (err == nil)
-	}
 	return s.healthStatus
 }
 
