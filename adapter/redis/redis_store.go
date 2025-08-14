@@ -77,7 +77,7 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 	}
 
 	ctx := context.Background()
-	indexKey := JobIndexKeyFormat + queueName
+	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 	if err := rs.client.HSet(ctx, indexKey, meta.ID, payload).Err(); err != nil {
 		rs.logger.Error("failed to set job in index", "error", err, "queue", queueName)
 		return err
