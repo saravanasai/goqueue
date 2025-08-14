@@ -262,3 +262,82 @@ func TestRedisIsHealthy(t *testing.T) {
 		t.Fatalf("Expected store to be healthy when Redis is available")
 	}
 }
+
+// BadJob simulates a job that fails JSON marshaling
+type BadJob struct{}
+
+func (b *BadJob) Process(ctx context.Context) error { return nil }
+
+func (b *BadJob) MarshalJSON() ([]byte, error) { return nil, fmt.Errorf("intentional marshal failure") }
+
+// TestPushWhenRedisUnavailable verifies Push returns an error when Redis is down
+func TestPushWhenRedisUnavailable(t *testing.T) {
+	miniRedis, client := setupTestRedis(t)
+	// capture addr then close server to simulate unavailability
+	addr := miniRedis.Addr()
+	miniRedis.Close()
+
+	// Create store that points to closed redis
+	testLogger := logger.NewZapLogger()
+	redisManager := manager.NewRedisClientManager(addr, "", 0, testLogger)
+	cfg := config.NewRedisConfig(addr, "", 0)
+	store := NewRedisStore(client, cfg, redisManager, addr, 0, testLogger)
+
+	// Ensure registry has TestJob
+	if _, ok := registry.GetFromRegistery("TestJob"); !ok {
+		registry.Register("TestJob", func() job.Job { return &TestJob{} })
+	}
+
+	// Attempt to push; should return error due to underlying Redis being unavailable
+	testJob := &TestJob{ID: "u1", Data: "unavail"}
+	if err := store.Push("q_unavail", testJob); err == nil {
+		t.Fatalf("Expected error when pushing to unavailable Redis, got nil")
+	} else {
+		t.Logf("Push returned expected error: %v", err)
+	}
+}
+
+// TestPushBatchWithMarshalError ensures PushBatch continues when some jobs fail to marshal
+func TestPushBatchWithMarshalError(t *testing.T) {
+	miniRedis, client := setupTestRedis(t)
+	defer miniRedis.Close()
+
+	testLogger := logger.NewZapLogger()
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
+
+	// Ensure registry has TestJob
+	if _, ok := registry.GetFromRegistery("TestJob"); !ok {
+		registry.Register("TestJob", func() job.Job { return &TestJob{} })
+	}
+
+	jobs := []job.Job{
+		&BadJob{},
+		&TestJob{ID: "good1", Data: "ok"},
+	}
+	queueName := "q_pushbatch_marshal_err"
+
+	// PushBatch should succeed (skip bad job) and push the good job
+	if err := store.PushBatch(queueName, jobs); err != nil {
+		t.Fatalf("PushBatch error: %v", err)
+	}
+
+	// Verify only the good job is enqueued
+	qlen, err := client.LLen(context.Background(), queueName).Result()
+	if err != nil {
+		t.Fatalf("LLen error: %v", err)
+	}
+	if qlen != 1 {
+		t.Fatalf("Expected 1 job in queue, got %d", qlen)
+	}
+
+	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
+	hlen, err := client.HLen(context.Background(), indexKey).Result()
+	if err != nil {
+		t.Fatalf("HLen error: %v", err)
+	}
+	if hlen != 1 {
+		t.Fatalf("Expected 1 job in index, got %d", hlen)
+	}
+}
