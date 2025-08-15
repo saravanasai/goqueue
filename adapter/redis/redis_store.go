@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -17,10 +18,48 @@ import (
 
 const (
 	processingQueueName   = "processing:"
+	retryQueuePrefix      = "retry:"
 	MetricsQueueSuffix    = ":metrics"
 	MetricsAckQueueSuffix = ":metrics:ack"
 	JobIndexKeyFormat     = "job_index:%s"
+	retryPollerInterval   = 1 * time.Second
 )
+
+// Lua script for atomically moving jobs from retry queue to main queue
+const moveRetryJobScript = `
+local retry_key = KEYS[1]
+local main_queue = KEYS[2]
+local current_time = tonumber(ARGV[1])
+
+-- Get jobs that should be retried (score <= current_time)
+local jobs = redis.call('ZRANGEBYSCORE', retry_key, '-inf', current_time, 'LIMIT', 0, 10)
+
+if #jobs == 0 then
+    return 0
+end
+
+-- Move each job from retry queue to main queue
+local moved = 0
+for _, job in ipairs(jobs) do
+    -- Remove from retry queue and push to main queue atomically
+    local removed = redis.call('ZREM', retry_key, job)
+    if removed == 1 then
+        redis.call('LPUSH', main_queue, job)
+        moved = moved + 1
+    end
+end
+
+return moved
+`
+
+const cleanupProcessingJobScript = `
+local processing_queue = KEYS[1]
+local job_payload = ARGV[1]
+
+-- Remove job from processing queue if it exists
+local removed = redis.call('LREM', processing_queue, 1, job_payload)
+return removed
+`
 
 type RedisStore struct {
 	client       *redis.Client
@@ -28,17 +67,34 @@ type RedisStore struct {
 	redisManager *manager.RedisClientManager
 	redisKey     string
 	logger       logger.Logger
+	retryPoller  *retryPoller
+}
+
+// retryPoller handles moving jobs from retry queue to main queue
+type retryPoller struct {
+	store     *RedisStore
+	stopCh    chan struct{}
+	stoppedCh chan struct{}
 }
 
 func NewRedisStore(client *redis.Client, config config.Config, redisManager *manager.RedisClientManager, addr string, db int, logger logger.Logger) *RedisStore {
-
-	return &RedisStore{
+	rs := &RedisStore{
 		client:       client,
 		config:       config,
 		redisManager: redisManager,
 		redisKey:     redisManager.Key(addr, db),
 		logger:       logger,
 	}
+
+	// Start retry poller
+	rs.retryPoller = &retryPoller{
+		store:     rs,
+		stopCh:    make(chan struct{}),
+		stoppedCh: make(chan struct{}),
+	}
+	go rs.retryPoller.start()
+
+	return rs
 }
 
 func (rs *RedisStore) Push(queueName string, jb job.Job) error {
@@ -163,7 +219,7 @@ func (rs *RedisStore) Pop(queueName string) (job.JobContext, error) {
 		return job.JobContext{}, fmt.Errorf("failed to decode job into type %s: %w", queued.JobName, err)
 	}
 
-	return job.JobContext{Job: jobInstance, JobID: queued.ID, QueueName: queueName, EnqueuedAt: queued.EnqueuedAt}, nil
+	return job.JobContext{Job: jobInstance, JobID: queued.ID, QueueName: queueName, EnqueuedAt: queued.EnqueuedAt, RetryCount: queued.RetryCount}, nil
 }
 
 func (rs *RedisStore) Ack(queueName string, jobID string) error {
@@ -191,6 +247,146 @@ func (rs *RedisStore) Retry(job job.Job, delay time.Duration) error {
 	return nil
 }
 
+// RetryJobWithMetadata pushes a job to the retry queue with retry metadata
+func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface{}, delay time.Duration) error {
+	// Type assert to RedisQueuedJob
+	redisJob, ok := queuedJob.(job.RedisQueuedJob)
+	if !ok {
+		return fmt.Errorf("invalid job type for Redis retry, expected RedisQueuedJob")
+	}
+
+	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
+		rs.logger.Error("redis instance is currently unhealthy, cannot retry job", "queue", queueName)
+		return fmt.Errorf("redis instance is currently unhealthy, cannot retry job")
+	}
+
+	ctx := context.Background()
+	retryQueueName := retryQueuePrefix + queueName
+	retryTimestamp := time.Now().Add(delay).Unix()
+
+	// Increment retry count
+	redisJob.RetryCount++
+
+	// Serialize the job with updated metadata
+	payload, err := json.Marshal(redisJob)
+	if err != nil {
+		rs.logger.Error("failed to marshal job for retry", "error", err, "queue", queueName)
+		return fmt.Errorf("failed to marshal job for retry: %w", err)
+	}
+
+	// Get the original job payload from processing queue for cleanup
+	processingQueue := processingQueueName + queueName
+	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
+
+	// Get original payload using job ID for cleanup
+	originalPayload, err := rs.client.HGet(ctx, indexKey, redisJob.ID).Result()
+	if err == nil {
+		// Clean up the processing queue (remove the original job)
+		rs.client.Eval(ctx, cleanupProcessingJobScript, []string{processingQueue}, originalPayload)
+	}
+
+	// Add to retry sorted set with retry timestamp as score
+	err = rs.client.ZAdd(ctx, retryQueueName, redis.Z{
+		Score:  float64(retryTimestamp),
+		Member: payload,
+	}).Err()
+
+	if err != nil {
+		rs.logger.Error("failed to add job to retry queue", "error", err, "queue", queueName)
+		return fmt.Errorf("failed to add job to retry queue: %w", err)
+	}
+
+	// Update the job index with the new retry payload
+	rs.client.HSet(ctx, indexKey, redisJob.ID, payload)
+
+	rs.logger.Info("job added to retry queue", "queue", queueName, "jobID", redisJob.ID, "retryCount", redisJob.RetryCount, "retryAt", time.Unix(retryTimestamp, 0))
+	return nil
+}
+
+// start begins the retry poller goroutine
+func (rp *retryPoller) start() {
+	defer close(rp.stoppedCh)
+	ticker := time.NewTicker(retryPollerInterval)
+	defer ticker.Stop()
+
+	rp.store.logger.Info("retry poller started")
+
+	for {
+		select {
+		case <-rp.stopCh:
+			rp.store.logger.Info("retry poller stopping")
+			return
+		case <-ticker.C:
+			rp.processRetryQueues()
+		}
+	}
+}
+
+// stop stops the retry poller
+func (rp *retryPoller) stop() {
+	close(rp.stopCh)
+	<-rp.stoppedCh
+}
+
+// processRetryQueues checks all retry queues and moves ready jobs back to main queues
+func (rp *retryPoller) processRetryQueues() {
+	// Check if Redis is healthy before attempting operations
+	if rp.store.redisManager != nil && !rp.store.redisManager.IsHealthy(rp.store.redisKey) {
+		// Skip processing if Redis is not healthy
+		return
+	}
+
+	ctx := context.Background()
+
+	// Get all retry queue keys
+	retryKeys, err := rp.store.client.Keys(ctx, retryQueuePrefix+"*").Result()
+	if err != nil {
+		// Only log error if it's not a connection error during shutdown
+		if !isConnectionError(err) {
+			rp.store.logger.Error("failed to get retry queue keys", "error", err)
+		}
+		return
+	}
+
+	currentTime := time.Now().Unix()
+
+	for _, retryKey := range retryKeys {
+		// Extract main queue name from retry key
+		mainQueueName := retryKey[len(retryQueuePrefix):]
+
+		// Use Lua script to atomically move jobs from retry to main queue
+		result, err := rp.store.client.Eval(ctx, moveRetryJobScript, []string{retryKey, mainQueueName}, currentTime).Result()
+		if err != nil {
+			if !isConnectionError(err) {
+				rp.store.logger.Error("failed to execute retry job move script", "error", err, "retryQueue", retryKey)
+			}
+			continue
+		}
+
+		if movedCount, ok := result.(int64); ok && movedCount > 0 {
+			rp.store.logger.Info("moved jobs from retry queue", "queue", mainQueueName, "count", movedCount)
+		}
+	}
+}
+
+// isConnectionError checks if the error is a connection-related error
+func isConnectionError(err error) bool {
+	errStr := err.Error()
+	return strings.Contains(errStr, "connection") ||
+		strings.Contains(errStr, "refused") ||
+		strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "wsarecv") ||
+		strings.Contains(errStr, "EOF")
+}
+
+// Stop gracefully stops the Redis store and its retry poller
+func (rs *RedisStore) Stop() error {
+	if rs.retryPoller != nil {
+		rs.retryPoller.stop()
+	}
+	return nil
+}
+
 func (r *RedisStore) EnqueueMetrics(metrics config.JobMetrics) error {
 	// Create metrics queue name
 	metricsQueueName := metrics.QueueName + MetricsQueueSuffix
@@ -215,7 +411,7 @@ func (rs *RedisStore) DequeueMetrics(queueName string) (config.JobMetrics, error
 	ctx := context.Background()
 	processingQueue := queueName + MetricsAckQueueSuffix
 	sourceQueueName := queueName + MetricsQueueSuffix
-	
+
 	// Use a timeout of 1 second to make this non-blocking like the memory store
 	// BRPopLPush blocks until a job is available or context timeout
 	payload, err := rs.client.BRPopLPush(ctx, sourceQueueName, processingQueue, 1*time.Second).Result()

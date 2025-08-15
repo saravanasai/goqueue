@@ -29,6 +29,8 @@ type JobContext struct {
 	EnqueuedAt time.Time
 	// Timeout is the maximum duration for job execution (optional, overrides config)
 	Timeout time.Duration
+	// RetryCount is the number of times this job has been retried
+	RetryCount int
 }
 
 // SetTimeout sets the timeout for this job context.

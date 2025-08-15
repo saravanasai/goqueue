@@ -5,12 +5,14 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/saravanasai/goqueue/adapter"
+	"github.com/saravanasai/goqueue/adapter/utils"
 	"github.com/saravanasai/goqueue/config"
 	configuration "github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
@@ -186,9 +188,35 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 		timeout = w.config.JobTimeout
 	}
 
-	var attempt int
+	// Check if this job has already exceeded max retries
+	if job.RetryCount >= maxAttempts {
+		w.logger.Error("Job has already exceeded max retries, sending to DLQ", "workerID", workerID, "jobID", job.JobID, "retryCount", job.RetryCount, "maxAttempts", maxAttempts)
+
+		// Send directly to DLQ
+		if w.config.DLQAdapter != nil {
+			if dlqErr := w.config.DLQAdapter.Push(ctx, &job, fmt.Errorf("job exceeded max retry attempts (%d)", maxAttempts)); dlqErr != nil {
+				w.logger.Error("Failed to push job to DLQ", "jobID", job.JobID, "error", dlqErr)
+			}
+		} else {
+			w.logger.Info("No DLQ configured, discarding failed job", "jobID", job.JobID)
+		}
+
+		// Acknowledge the job to remove it from processing
+		if ackErr := w.store.Ack(w.queueName, job.JobID); ackErr != nil {
+			w.logger.Error("Failed to ack job after DLQ", "workerID", workerID, "jobID", job.JobID, "error", ackErr)
+		}
+		return
+	}
+
 	var lastErr error
-	for attempt = 1; attempt <= maxAttempts; attempt++ {
+	// For retried jobs, we only try once more (the retry attempt)
+	maxAttemptsThisRun := 1
+	if job.RetryCount == 0 {
+		// This is a fresh job, allow full retry attempts
+		maxAttemptsThisRun = maxAttempts
+	}
+
+	for attempt := 1; attempt <= maxAttemptsThisRun; attempt++ {
 		startTime := time.Now()
 		execCtx := ctx
 		// Empty cancel function that will be replaced if we create a timeout context
@@ -239,14 +267,35 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 		if lastErr == context.DeadlineExceeded {
 			w.logger.Error("Job execution timed out", "workerID", workerID, "jobID", job.JobID, "queue", w.queueName, "timeout", timeout)
 		} else {
-			w.logger.Error("Failed to process job", "workerID", workerID, "jobID", job.JobID, "attempt", attempt, "error", lastErr)
+			w.logger.Error("Failed to process job", "workerID", workerID, "jobID", job.JobID, "attempt", attempt, "retryCount", job.RetryCount, "error", lastErr)
 		}
-		if attempt < maxAttempts {
+
+		// Check if we should retry this job
+		totalAttempts := job.RetryCount + attempt
+		if totalAttempts < maxAttempts {
 			delay := retryDelay
 			if exponential {
-				delay = retryDelay * time.Duration(1<<uint(attempt-1))
+				delay = retryDelay * time.Duration(1<<uint(job.RetryCount))
 			}
-			time.Sleep(delay)
+
+			// Check if we're using Redis driver for non-blocking retries
+			if redisStore, ok := w.store.(interface {
+				RetryJobWithMetadata(string, interface{}, time.Duration) error
+			}); ok {
+				// For Redis, create a retry job with metadata instead of blocking
+				if redisJob, err := w.createRedisQueuedJob(job, job.RetryCount); err == nil {
+					if retryErr := redisStore.RetryJobWithMetadata(w.queueName, redisJob, delay); retryErr != nil {
+						w.logger.Error("failed to add job to retry queue", "workerID", workerID, "jobID", job.JobID, "error", retryErr)
+					} else {
+						w.logger.Info("job added to retry queue for later processing", "workerID", workerID, "jobID", job.JobID, "retryCount", job.RetryCount, "delay", delay)
+						// Don't acknowledge the job yet - it will be processed again from retry queue
+						return
+					}
+				} else {
+					w.logger.Error("failed to create retry job metadata", "workerID", workerID, "jobID", job.JobID, "error", err)
+				}
+			}
+			// If we reach here, retry failed or not using Redis - just acknowledge and let it fail
 		}
 	}
 
@@ -367,4 +416,27 @@ func calculateMetricsBufferSize(config config.Config) int {
 	}
 
 	return calculatedSize
+}
+
+// createRedisQueuedJob creates a RedisQueuedJob from a JobContext for retry purposes
+func (w *Worker) createRedisQueuedJob(jobCtx job.JobContext, retryCount int) (job.RedisQueuedJob, error) {
+	// Marshal the actual job
+	jobPayload, err := json.Marshal(jobCtx.Job)
+	if err != nil {
+		return job.RedisQueuedJob{}, fmt.Errorf("failed to marshal job: %w", err)
+	}
+
+	// Get job name using utils
+	jobName := utils.GetJobName(jobCtx.Job)
+	if jobName == "" {
+		return job.RedisQueuedJob{}, fmt.Errorf("could not determine job name from type")
+	}
+
+	return job.RedisQueuedJob{
+		Job:        jobPayload,
+		JobName:    jobName,
+		ID:         jobCtx.JobID,
+		EnqueuedAt: jobCtx.EnqueuedAt,
+		RetryCount: retryCount,
+	}, nil
 }

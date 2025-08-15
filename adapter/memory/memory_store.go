@@ -98,7 +98,7 @@ func (store *InMemoryStore) Pop(queueName string) (job.JobContext, error) {
 	store.processing[queueName][popedJob.ID] = popedJob
 	store.mu.Unlock()
 
-	return job.JobContext{Job: popedJob.Job, JobID: popedJob.ID, QueueName: queueName, EnqueuedAt: popedJob.EnqueuedAt}, nil
+	return job.JobContext{Job: popedJob.Job, JobID: popedJob.ID, QueueName: queueName, EnqueuedAt: popedJob.EnqueuedAt, RetryCount: popedJob.RetryCount}, nil
 
 }
 

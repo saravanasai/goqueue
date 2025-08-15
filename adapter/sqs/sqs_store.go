@@ -492,6 +492,7 @@ func (s *SQSStore) Pop(queueName string) (job.JobContext, error) {
 		JobID:      sqsJob.ID,
 		QueueName:  queueName,
 		EnqueuedAt: sqsJob.EnqueuedAt,
+		RetryCount: sqsJob.RetryCount,
 	}, nil
 }
 
