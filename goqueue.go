@@ -19,6 +19,11 @@ type QueueStats = stats.QueueStats
 
 const DefaultShutdownTimeout = 5 * time.Second
 
+// GetVersion returns the current version of GoQueue
+func GetVersion() string {
+	return Version
+}
+
 // NewQueueWithDefaults creates a new queue with the specified name and configuration,
 // using the default shutdown timeout.
 //

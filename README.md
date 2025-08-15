@@ -8,6 +8,7 @@
     <a href="https://pkg.go.dev/github.com/saravanasai/goqueue"><img src="https://pkg.go.dev/badge/github.com/saravanasai/goqueue.svg" alt="Go Reference"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
     <img src="https://img.shields.io/badge/Go-%3E=1.18-blue" alt="Go Version">
+    <img src="https://img.shields.io/badge/Version-0.0.1-green" alt="Version">
   </p>
 </div>
 
