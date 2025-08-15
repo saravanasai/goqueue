@@ -464,6 +464,12 @@ func (c Config) Validate(logger logger.Logger) error {
 	case DriverRedis:
 		return nil
 	case DriverSQS:
+		// Add SQS-specific validations
+		if sqsCfg, ok := c.DriverConfig.(SQSConfig); ok {
+			if sqsCfg.QueueURL == "" {
+				return errors.New("SQS queue URL is required")
+			}
+		}
 		return nil
 	default:
 		logger.Error("unsupported driver", "Driver", c.Driver)

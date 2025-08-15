@@ -24,6 +24,21 @@ GoQueue is a flexible background job processing library for Go applications, des
 
 For a deeper understanding of the system design, check out the [Architecture Documentation](docs/architecture.md).
 
+## Why GoQueue?
+
+Comparison with popular Go queue libraries:
+
+| Feature              | GoQueue | Machinery | RQ  | Asynq |
+| -------------------- | ------- | --------- | --- | ----- |
+| Multiple Backends    | ✅      | ✅        | ❌  | ❌    |
+| Clean API            | ✅      | ❌        | ❌  | ✅    |
+| Middleware Support   | ✅      | ❌        | ❌  | ❌    |
+| Test Coverage        | ✅      | ⚠️        | ⚠️  | ✅    |
+| AWS SQS Support      | ✅      | ❌        | ❌  | ❌    |
+| Non-blocking Retries | ✅      | ⚠️        | ❌  | ✅    |
+
+GoQueue provides the most comprehensive feature set with excellent developer experience!
+
 ## Installation
 
 ```bash
