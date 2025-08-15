@@ -25,41 +25,10 @@ const (
 	retryPollerInterval   = 1 * time.Second
 )
 
-// Lua script for atomically moving jobs from retry queue to main queue
-const moveRetryJobScript = `
-local retry_key = KEYS[1]
-local main_queue = KEYS[2]
-local current_time = tonumber(ARGV[1])
-
--- Get jobs that should be retried (score <= current_time)
-local jobs = redis.call('ZRANGEBYSCORE', retry_key, '-inf', current_time, 'LIMIT', 0, 10)
-
-if #jobs == 0 then
-    return 0
-end
-
--- Move each job from retry queue to main queue
-local moved = 0
-for _, job in ipairs(jobs) do
-    -- Remove from retry queue and push to main queue atomically
-    local removed = redis.call('ZREM', retry_key, job)
-    if removed == 1 then
-        redis.call('LPUSH', main_queue, job)
-        moved = moved + 1
-    end
-end
-
-return moved
-`
-
-const cleanupProcessingJobScript = `
-local processing_queue = KEYS[1]
-local job_payload = ARGV[1]
-
--- Remove job from processing queue if it exists
-local removed = redis.call('LREM', processing_queue, 1, job_payload)
-return removed
-`
+// Lua scripts are embedded from files in adapter/redis/scripts via scripts.go
+// Variables available in this package:
+//   - moveRetryJobScript
+//   - cleanupProcessingJobScript
 
 type RedisStore struct {
 	client       *redis.Client
