@@ -1,17 +1,43 @@
-End-to-end (E2E) and benchmark harness for queue drivers
+# E2E Tests
 
-Purpose:
+End-to-end tests for GoQueue drivers. Test complete queue functionality with realistic job processing.
 
-- Provide a separate folder for tests that exercise drivers using client code (integration-style).
-- Keep these tests out of the fast unit test run; use a build tag `e2e` when executing.
-- Provide a place to add benchmarks for performance comparisons.
+## Test Commands by Driver
 
-Usage:
+### Memory Driver
 
-- Run e2e tests: go test -tags=e2e ./e2e
-- Run e2e benchmarks: go test -tags=e2e -bench . ./e2e
+```bash
+# Run memory e2e test
+go test -v ./e2e/ -run TestSimple
+```
 
-Notes:
+### Redis Driver
 
-- The repository already contains unit tests for each adapter. E2E tests should run more slowly and may require external services (Redis, SQS). Use miniredis or LocalStack in CI for full verification.
-- Files in this folder use the `//go:build e2e` build tag to exclude them from normal `go test ./...` runs.
+```bash
+# Run Redis e2e tests
+go test -v ./e2e/ -run TestRedis
+
+# Run specific Redis test
+go test -v ./e2e/ -run TestRedisQueueConcurrentDispatch
+```
+
+### All Drivers
+
+```bash
+# Run all e2e tests
+go test -v ./e2e/
+```
+
+## Test Features by Driver
+
+| Feature               | Memory | Redis  | SQS\* |
+| --------------------- | ------ | ------ | ----- |
+| Job Processing        | ✅     | ✅     | ❌    |
+| Worker Management     | ✅     | ✅     | ❌    |
+| Metrics Collection    | ✅     | ❌\*\* | ❌    |
+| Health Monitoring     | ✅     | ✅     | ❌    |
+| Concurrent Operations | ❌     | ✅     | ❌    |
+| Graceful Shutdown     | ✅     | ✅     | ❌    |
+
+\*SQS has unit tests in `./adapter/sqs/` but no e2e tests yet  
+\*\*Redis tests don't use metrics to avoid timing issues with miniredis
