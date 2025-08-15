@@ -9,6 +9,9 @@ End-to-end tests for GoQueue drivers. Test complete queue functionality with rea
 ```bash
 # Run memory e2e test
 go test -v ./e2e/ -run TestSimple
+
+# Run memory concurrent test
+go test -v ./e2e/ -run TestMemoryQueueConcurrentDispatch
 ```
 
 ### Redis Driver
@@ -69,7 +72,7 @@ go test -v ./e2e/ -short
 | Worker Management     | ✅     | ✅     | ✅  |
 | Metrics Collection    | ✅     | ✅     | ✅  |
 | Health Monitoring     | ✅     | ✅     | ✅  |
-| Concurrent Operations | ❌     | ✅     | ✅  |
+| Concurrent Operations | ✅     | ✅     | ✅  |
 | Graceful Shutdown     | ✅     | ✅     | ✅  |
 
 \*\*Redis tests now include comprehensive metrics testing with proper callback validation
