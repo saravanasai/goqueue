@@ -19,6 +19,9 @@ go test -v ./e2e/ -run TestRedis
 
 # Run specific Redis test
 go test -v ./e2e/ -run TestRedisQueueConcurrentDispatch
+
+# Run Redis metrics test
+go test -v ./e2e/ -run TestRedisQueueMetrics
 ```
 
 ### SQS Driver
@@ -64,12 +67,12 @@ go test -v ./e2e/ -short
 | --------------------- | ------ | ------ | --- |
 | Job Processing        | ✅     | ✅     | ✅  |
 | Worker Management     | ✅     | ✅     | ✅  |
-| Metrics Collection    | ✅     | ❌\*\* | ✅  |
+| Metrics Collection    | ✅     | ✅     | ✅  |
 | Health Monitoring     | ✅     | ✅     | ✅  |
 | Concurrent Operations | ❌     | ✅     | ✅  |
 | Graceful Shutdown     | ✅     | ✅     | ✅  |
 
-\*\*Redis tests don't use metrics to avoid timing issues with miniredis
+\*\*Redis tests now include comprehensive metrics testing with proper callback validation
 
 ## SQS Test Configuration
 

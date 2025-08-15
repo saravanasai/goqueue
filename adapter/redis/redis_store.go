@@ -215,8 +215,10 @@ func (rs *RedisStore) DequeueMetrics(queueName string) (config.JobMetrics, error
 	ctx := context.Background()
 	processingQueue := queueName + MetricsAckQueueSuffix
 	sourceQueueName := queueName + MetricsQueueSuffix
-	// BRPopLPush blocks until a job is available or context is canceled
-	payload, err := rs.client.BRPopLPush(ctx, sourceQueueName, processingQueue, 0).Result()
+	
+	// Use a timeout of 1 second to make this non-blocking like the memory store
+	// BRPopLPush blocks until a job is available or context timeout
+	payload, err := rs.client.BRPopLPush(ctx, sourceQueueName, processingQueue, 1*time.Second).Result()
 	if err == redis.Nil {
 		return config.JobMetrics{}, nil
 	}
