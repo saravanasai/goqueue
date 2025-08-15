@@ -60,14 +60,14 @@ go test -v ./e2e/ -short
 
 ## Test Features by Driver
 
-| Feature               | Memory | Redis  | SQS   |
-| --------------------- | ------ | ------ | ----- |
-| Job Processing        | ✅     | ✅     | ✅    |
-| Worker Management     | ✅     | ✅     | ✅    |
-| Metrics Collection    | ✅     | ❌\*\* | ✅    |
-| Health Monitoring     | ✅     | ✅     | ✅    |
-| Concurrent Operations | ❌     | ✅     | ✅    |
-| Graceful Shutdown     | ✅     | ✅     | ✅    |
+| Feature               | Memory | Redis  | SQS |
+| --------------------- | ------ | ------ | --- |
+| Job Processing        | ✅     | ✅     | ✅  |
+| Worker Management     | ✅     | ✅     | ✅  |
+| Metrics Collection    | ✅     | ❌\*\* | ✅  |
+| Health Monitoring     | ✅     | ✅     | ✅  |
+| Concurrent Operations | ❌     | ✅     | ✅  |
+| Graceful Shutdown     | ✅     | ✅     | ✅  |
 
 \*\*Redis tests don't use metrics to avoid timing issues with miniredis
 
@@ -81,7 +81,7 @@ The following environment variables must be set to run SQS tests:
 
 - `SQS_TEST_QUEUE_URL`: The full URL of your SQS queue
 - `SQS_TEST_REGION`: AWS region where the queue is located
-- `SQS_TEST_ACCESS_KEY_ID`: Your AWS access key ID  
+- `SQS_TEST_ACCESS_KEY_ID`: Your AWS access key ID
 - `SQS_TEST_SECRET_ACCESS_KEY`: Your AWS secret access key
 
 ### Security
@@ -95,7 +95,9 @@ The following environment variables must be set to run SQS tests:
 ## Test Design Patterns
 
 ### Job Registration
+
 All test jobs must be registered with the GoQueue registry:
+
 ```go
 func init() {
     goqueue.RegisterJob("JobTypeName", func() goqueue.Job {
@@ -105,7 +107,9 @@ func init() {
 ```
 
 ### Metrics Tracking
+
 Tests use metrics callbacks to track job completion:
+
 ```go
 cfg := config.NewSQSConfig(...).WithMetricsCallback(func(metrics config.JobMetrics) {
     // Track job completion
@@ -113,7 +117,9 @@ cfg := config.NewSQSConfig(...).WithMetricsCallback(func(metrics config.JobMetri
 ```
 
 ### Rate Limiting (SQS)
+
 SQS tests implement rate limiting to respect AWS service limits:
+
 - Controlled concurrent dispatching with semaphores
 - Delays between job dispatches
 - Extended timeouts for job processing
