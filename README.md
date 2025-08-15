@@ -121,8 +121,8 @@ queue, err := goqueue.NewQueueWithDefaults("emails", cfg)
 cfg := config.NewSQSConfig(
     "https://sqs.us-west-2.amazonaws.com/123456789012/my-queue", // Queue URL
     "us-west-2",                                                 // AWS Region
-    "",                                                          // Access key (optional)
-    "",                                                          // Secret key (optional)
+    "xxx",                                                       // Access key
+    "xxxx",                                                      // Secret key
 )
 queue, err := goqueue.NewQueueWithDefaults("notifications", cfg)
 ```
