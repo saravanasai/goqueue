@@ -54,6 +54,7 @@ type SQSClient interface {
 	DeleteMessage(ctx context.Context, params *sqs.DeleteMessageInput, optFns ...func(*sqs.Options)) (*sqs.DeleteMessageOutput, error)
 	SendMessageBatch(ctx context.Context, params *sqs.SendMessageBatchInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageBatchOutput, error)
 	GetQueueAttributes(ctx context.Context, params *sqs.GetQueueAttributesInput, optFns ...func(*sqs.Options)) (*sqs.GetQueueAttributesOutput, error)
+	ChangeMessageVisibility(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error)
 }
 
 // SQSStore is an implementation of the Store interface using AWS SQS
@@ -163,6 +164,36 @@ func NewSQSStoreWithClient(client SQSClient, sqsCfg jobConfig.SQSConfig, cfg job
 	store.queueURLs[""] = sqsCfg.QueueURL
 
 	return store
+}
+
+// createSQSQueuedJob creates an SQSQueuedJob from a JobContext for retry purposes
+func (s *SQSStore) createSQSQueuedJob(jobCtx job.JobContext, retryCount int) (SQSQueuedJob, error) {
+	// Marshal the actual job
+	jobPayload, err := json.Marshal(jobCtx.Job)
+	if err != nil {
+		return SQSQueuedJob{}, fmt.Errorf("failed to marshal job: %w", err)
+	}
+
+	// Get job name using utils
+	jobName := utils.GetJobName(jobCtx.Job)
+	if jobName == "" {
+		return SQSQueuedJob{}, fmt.Errorf("could not determine job name from type")
+	}
+
+	// Get receipt handle from mapping
+	receiptHandle, exists := s.jobReceiptHandles[jobCtx.JobID]
+	if !exists {
+		return SQSQueuedJob{}, fmt.Errorf("receipt handle not found for job ID: %s", jobCtx.JobID)
+	}
+
+	return SQSQueuedJob{
+		Job:           jobPayload,
+		JobName:       jobName,
+		ID:            jobCtx.JobID,
+		EnqueuedAt:    jobCtx.EnqueuedAt,
+		RetryCount:    retryCount,
+		ReceiptHandle: receiptHandle,
+	}, nil
 }
 
 // Push adds a single job to the queue
@@ -463,10 +494,22 @@ func (s *SQSStore) Pop(queueName string) (job.JobContext, error) {
 		return job.JobContext{}, fmt.Errorf("failed to unmarshal SQS job: %w", err)
 	}
 
-	// Store the receipt handle for later acknowledgment
+	// Store the receipt handle for later acknowledgment or retry
 	sqsJob.ReceiptHandle = *message.ReceiptHandle
-	// Set jobReceiptHandles mapping for Ack
 	s.jobReceiptHandles[sqsJob.ID] = *message.ReceiptHandle
+
+	// Extract retry count from message attributes if available
+	retryCount := 0
+	if message.MessageAttributes != nil {
+		if retryAttr, exists := message.MessageAttributes[attrRetryCount]; exists && retryAttr.StringValue != nil {
+			if count, err := strconv.Atoi(*retryAttr.StringValue); err == nil {
+				retryCount = count
+			}
+		}
+	}
+
+	// Update sqsJob retry count from message attributes (this handles redeliveries)
+	sqsJob.RetryCount = retryCount
 
 	// Get the job type constructor
 	newJobFunc, ok := registry.GetFromRegistery(sqsJob.JobName)
@@ -529,8 +572,70 @@ func (s *SQSStore) Retry(job job.Job, delay time.Duration) error {
 	// SQS doesn't support arbitrary delay times, only a fixed delay of up to 15 minutes
 	// If a longer delay is needed, you'd need to implement a delay queue pattern
 
-	// This is a stub implementation
-	return fmt.Errorf("retry not implemented for SQS driver")
+	// This is a stub implementation - use RetryJobWithMetadata instead
+	return fmt.Errorf("retry not implemented for SQS driver - use RetryJobWithMetadata")
+}
+
+// RetryJobWithMetadata handles job retries using SQS ChangeMessageVisibility
+// This provides the same retry behavior as the Redis driver using SQS's native visibility timeout
+func (s *SQSStore) RetryJobWithMetadata(queueName string, queuedJob interface{}, delay time.Duration) error {
+	var sqsJob SQSQueuedJob
+	var err error
+
+	// Handle both SQSQueuedJob and JobContext types
+	switch v := queuedJob.(type) {
+	case SQSQueuedJob:
+		sqsJob = v
+	case job.JobContext:
+		// Create SQSQueuedJob from JobContext
+		sqsJob, err = s.createSQSQueuedJob(v, v.RetryCount+1)
+		if err != nil {
+			return fmt.Errorf("failed to create SQS job for retry: %w", err)
+		}
+	default:
+		return fmt.Errorf("invalid job type for SQS retry, expected SQSQueuedJob or JobContext")
+	}
+
+	// Check if receipt handle is available
+	if sqsJob.ReceiptHandle == "" {
+		return fmt.Errorf("receipt handle not available for retry")
+	}
+
+	// Calculate visibility timeout from delay
+	// SQS supports visibility timeout up to 12 hours (43200 seconds)
+	maxSQSVisibilityTimeout := 12 * time.Hour
+	if delay > maxSQSVisibilityTimeout {
+		s.logger.Error("Retry delay exceeds SQS maximum visibility timeout",
+			"delay", delay,
+			"maxTimeout", maxSQSVisibilityTimeout,
+			"jobID", sqsJob.ID)
+		delay = maxSQSVisibilityTimeout
+	}
+
+	// Change the message visibility timeout to implement retry delay
+	_, err = s.client.ChangeMessageVisibility(context.Background(), &sqs.ChangeMessageVisibilityInput{
+		QueueUrl:          aws.String(s.getQueueURL(queueName)),
+		ReceiptHandle:     aws.String(sqsJob.ReceiptHandle),
+		VisibilityTimeout: int32(delay.Seconds()),
+	})
+
+	if err != nil {
+		s.healthStatus = false
+		s.logger.Error("Failed to change message visibility for retry",
+			"error", err,
+			"jobID", sqsJob.ID,
+			"queue", queueName,
+			"delay", delay)
+		return fmt.Errorf("failed to change message visibility for retry: %w", err)
+	}
+
+	s.logger.Info("Job scheduled for retry using visibility timeout",
+		"jobID", sqsJob.ID,
+		"queue", queueName,
+		"retryCount", sqsJob.RetryCount,
+		"delay", delay)
+
+	return nil
 }
 
 // EnqueueMetrics adds job metrics to a metrics queue
