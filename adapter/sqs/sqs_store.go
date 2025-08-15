@@ -1,4 +1,3 @@
-// Package sqs provides an AWS SQS implementation of the queue store interface
 package sqs
 
 import (
@@ -6,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -70,6 +70,8 @@ type SQSStore struct {
 	healthStatus bool
 	// queueURLs maps queue names to their SQS URLs
 	queueURLs map[string]string
+	// queueURLsMutex protects queueURLs map from concurrent access
+	queueURLsMutex sync.RWMutex
 	// jobReceiptHandles maps jobID to receiptHandle for Ack
 	jobReceiptHandles map[string]string
 }
@@ -615,13 +617,24 @@ func (s *SQSStore) getQueueURL(queueName string) string {
 		return s.sqsConfig.QueueURL
 	}
 
-	// Check if we've already resolved this queue name
+	// Check if we've already resolved this queue name (read lock)
+	s.queueURLsMutex.RLock()
 	if url, ok := s.queueURLs[queueName]; ok {
+		s.queueURLsMutex.RUnlock()
 		return url
 	}
+	s.queueURLsMutex.RUnlock()
 
-	// Otherwise, return the same URL (assuming queue names are handled via message attributes)
+	// Otherwise, return the same URL and cache it (write lock)
+	s.queueURLsMutex.Lock()
+	// Double-check in case another goroutine added it while we were waiting
+	if url, ok := s.queueURLs[queueName]; ok {
+		s.queueURLsMutex.Unlock()
+		return url
+	}
 	// In a real implementation, you might map queue names to different SQS queues
 	s.queueURLs[queueName] = s.sqsConfig.QueueURL
+	s.queueURLsMutex.Unlock()
+
 	return s.sqsConfig.QueueURL
 }
