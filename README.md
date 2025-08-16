@@ -27,18 +27,32 @@ For a deeper understanding of the system design, check out the [Architecture Doc
 
 ## Why GoQueue?
 
-Comparison with popular Go queue libraries:
-
-| Feature              | GoQueue | Machinery | RQ  | Asynq |
-| -------------------- | ------- | --------- | --- | ----- |
-| Multiple Backends    | ✅      | ✅        | ❌  | ❌    |
-| Clean API            | ✅      | ❌        | ❌  | ✅    |
-| Middleware Support   | ✅      | ❌        | ❌  | ❌    |
-| Test Coverage        | ✅      | ⚠️        | ⚠️  | ✅    |
-| AWS SQS Support      | ✅      | ❌        | ❌  | ❌    |
-| Non-blocking Retries | ✅      | ⚠️        | ❌  | ✅    |
-
 GoQueue provides the most comprehensive feature set with excellent developer experience!
+
+## Alternatives
+
+Here are some popular alternatives and related frameworks for job queues and background processing in Go:
+
+- **Asynq**: Redis-based job queue with a polished UI and CLI. Good developer experience, but recent commit activity is low.
+- **River**: Transactional queue built on Postgres, offering strong consistency and transactional guarantees.
+- **Temporal**: Workflow engine for complex orchestration and stateful jobs. Powerful, but has a steeper learning curve and heavier setup.
+- **NATS**: High-performance messaging system. Lacks built-in job scheduling, but is widely used for event-driven architectures.
+- **Machinery**: Older Go task queue library supporting multiple backends. Less active development and limited middleware support.
+- **RabbitMQ / Kafka**: General-purpose message brokers. Robust and scalable, but require more infrastructure and lack job-specific features out of the box.
+
+### Comparison Table
+
+| Feature              | GoQueue | Asynq | River | Temporal | NATS | Machinery | RabbitMQ/Kafka |
+| -------------------- | ------- | ----- | ----- | -------- | ---- | --------- | -------------- |
+| Multiple Backends    | ✅      | ❌    | ❌    | ❌       | ❌   | ✅        | ✅             |
+| Clean API            | ✅      | ✅    | ✅    | ⚠️       | ⚠️   | ❌        | ⚠️             |
+| Middleware Support   | ✅      | ❌    | ❌    | ⚠️       | ❌   | ❌        | ❌             |
+| Test Coverage        | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
+| AWS SQS Support      | ✅      | ❌    | ❌    | ❌       | ❌   | ❌        | ❌             |
+| Non-blocking Retries | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
+| UI/CLI Tools         | ⚠️      | ✅    | ❌    | ✅       | ❌   | ❌        | ⚠️             |
+| Scheduling           | ⚠️      | ✅    | ⚠️    | ✅       | ❌   | ⚠️        | ⚠️             |
+| SQL/Transactional    | ⚠️      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
 
 ## Installation
 
@@ -247,3 +261,10 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 ## License
 
 [MIT](LICENSE)
+
+## Roadmap
+
+Upcoming features planned for GoQueue:
+
+- **Scheduling**: Support for delayed and recurring jobs.
+- **Postgres Driver**: SQL-backed queue for teams preferring transactional guarantees.
