@@ -2,6 +2,7 @@ package memory
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -11,9 +12,16 @@ import (
 	"github.com/saravanasai/goqueue/job"
 )
 
-type queue struct {
-	jobChannel chan job.QueuedJob
+type scheduledJob struct {
+	QueuedJob job.QueuedJob
+	EnqueueAt time.Time
 }
+
+type queue struct {
+	mu   sync.Mutex
+	jobs []*scheduledJob
+}
+
 type InMemoryStore struct {
 	Queue      map[string]*queue
 	Config     config.Config
@@ -35,7 +43,9 @@ func NewInMemoryStore(queueName string, cfg config.Config, logger logger.Logger)
 
 func (store *InMemoryStore) ensureQueueInitialized(queueName string) {
 	if _, ok := store.Queue[queueName]; !ok {
-		store.Queue[queueName] = &queue{make(chan job.QueuedJob, 1000)}
+		store.Queue[queueName] = &queue{
+			jobs: []*scheduledJob{},
+		}
 	}
 	if _, ok := store.processing[queueName]; !ok {
 		store.processing[queueName] = make(map[string]job.QueuedJob)
@@ -45,52 +55,93 @@ func (store *InMemoryStore) ensureQueueInitialized(queueName string) {
 	}
 }
 
-func (store *InMemoryStore) Push(queueName string, jb job.Job) error {
+func (store *InMemoryStore) Push(queueName string, jb job.Job, delay ...time.Duration) error {
 	store.mu.Lock()
 	store.ensureQueueInitialized(queueName)
 	q := store.Queue[queueName]
 	store.mu.Unlock()
 
+	enqueueAt := time.Now()
+	if len(delay) > 0 && delay[0] > 0 {
+		enqueueAt = enqueueAt.Add(delay[0])
+	}
 	meta := job.QueuedJob{
 		Job:        jb,
 		ID:         utils.GenerateID(),
-		EnqueuedAt: time.Now(),
+		EnqueuedAt: enqueueAt,
 		RetryCount: 0,
 	}
-	q.jobChannel <- meta
+	sj := &scheduledJob{QueuedJob: meta, EnqueueAt: enqueueAt}
+
+	q.mu.Lock()
+	q.jobs = append(q.jobs, sj)
+	// Sort jobs by EnqueueAt ascending
+	sort.Slice(q.jobs, func(i, j int) bool {
+		return q.jobs[i].EnqueueAt.Before(q.jobs[j].EnqueueAt)
+	})
+	q.mu.Unlock()
 	return nil
 }
 
-// PushBatch adds multiple jobs to the in-memory queue.
-func (store *InMemoryStore) PushBatch(queueName string, jobs []job.Job) error {
+func (store *InMemoryStore) PushBatch(queueName string, jobs []job.Job, delay ...time.Duration) error {
 	store.mu.Lock()
 	store.ensureQueueInitialized(queueName)
 	q := store.Queue[queueName]
 	store.mu.Unlock()
 
+	enqueueAt := time.Now()
+	if len(delay) > 0 && delay[0] > 0 {
+		enqueueAt = enqueueAt.Add(delay[0])
+	}
+	q.mu.Lock()
 	for _, jb := range jobs {
 		meta := job.QueuedJob{
 			Job:        jb,
 			ID:         utils.GenerateID(),
-			EnqueuedAt: time.Now(),
+			EnqueuedAt: enqueueAt,
 			RetryCount: 0,
 		}
-		q.jobChannel <- meta
+		sj := &scheduledJob{QueuedJob: meta, EnqueueAt: enqueueAt}
+		q.jobs = append(q.jobs, sj)
 	}
+	sort.Slice(q.jobs, func(i, j int) bool {
+		return q.jobs[i].EnqueueAt.Before(q.jobs[j].EnqueueAt)
+	})
+	q.mu.Unlock()
 	return nil
 }
 
 func (store *InMemoryStore) Pop(queueName string) (job.JobContext, error) {
 	store.mu.Lock()
 	q, ok := store.Queue[queueName]
+	store.mu.Unlock()
 	if !ok {
-		store.mu.Unlock()
 		store.Logger.Error("queue not found", "queue", queueName)
 		return job.JobContext{}, fmt.Errorf("queue not found")
 	}
-	store.mu.Unlock()
 
-	popedJob := <-q.jobChannel
+	// Check for scheduled jobs ready to run
+	q.mu.Lock()
+	var popedJob job.QueuedJob
+	now := time.Now()
+	idx := -1
+	for i, sj := range q.jobs {
+		if !sj.EnqueueAt.After(now) {
+			popedJob = sj.QueuedJob
+			idx = i
+			break
+		}
+	}
+	if idx >= 0 {
+		// Remove from jobs slice
+		q.jobs = append(q.jobs[:idx], q.jobs[idx+1:]...)
+	}
+	q.mu.Unlock()
+
+	if idx == -1 {
+		// No job ready to run
+		return job.JobContext{}, fmt.Errorf("no job ready to run")
+	}
 
 	// move to processing
 	store.mu.Lock()
@@ -99,7 +150,6 @@ func (store *InMemoryStore) Pop(queueName string) (job.JobContext, error) {
 	store.mu.Unlock()
 
 	return job.JobContext{Job: popedJob.Job, JobID: popedJob.ID, QueueName: queueName, EnqueuedAt: popedJob.EnqueuedAt, RetryCount: popedJob.RetryCount}, nil
-
 }
 
 func (store *InMemoryStore) Ack(queueName string, payload string) error {
@@ -116,19 +166,43 @@ func (store *InMemoryStore) Ack(queueName string, payload string) error {
 }
 
 func (store *InMemoryStore) Retry(j job.Job, delay time.Duration) error {
-	if j == nil {
-		return fmt.Errorf("job is nil")
+
+	return nil
+}
+
+func (store *InMemoryStore) RetryJobWithMetadata(queueName string, rJob job.JobContext, delay ...time.Duration) error {
+	store.mu.Lock()
+	store.ensureQueueInitialized(queueName)
+	q := store.Queue[queueName]
+	store.mu.Unlock()
+
+	// Increment retry count
+	rJob.RetryCount += 1
+
+	// Calculate enqueue time with delay
+	enqueueAt := time.Now()
+	if len(delay) > 0 && delay[0] > 0 {
+		enqueueAt = enqueueAt.Add(delay[0])
 	}
-	// Determine a target queue based on job type
-	qname := utils.GetJobName(j)
-	if qname == "" {
-		qname = "default"
+
+	// Create queued job with the same ID
+	meta := job.QueuedJob{
+		Job:        rJob.Job,
+		ID:         rJob.JobID, // Keep the same job ID
+		EnqueuedAt: enqueueAt,
+		RetryCount: rJob.RetryCount,
 	}
-	// Schedule requeue after delay
-	go func() {
-		time.Sleep(delay)
-		_ = store.Push(qname, j)
-	}()
+
+	sj := &scheduledJob{QueuedJob: meta, EnqueueAt: enqueueAt}
+
+	q.mu.Lock()
+	q.jobs = append(q.jobs, sj)
+	// Sort jobs by EnqueueAt ascending
+	sort.Slice(q.jobs, func(i, j int) bool {
+		return q.jobs[i].EnqueueAt.Before(q.jobs[j].EnqueueAt)
+	})
+	q.mu.Unlock()
+
 	return nil
 }
 

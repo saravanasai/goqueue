@@ -5,14 +5,12 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/saravanasai/goqueue/adapter"
-	"github.com/saravanasai/goqueue/adapter/utils"
 	"github.com/saravanasai/goqueue/config"
 	configuration "github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
@@ -278,51 +276,9 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 				delay = retryDelay * time.Duration(1<<uint(job.RetryCount))
 			}
 
-			// Try driver-specific retry mechanisms
-			retryHandled := false
-
-			// Check if we're using Redis driver for non-blocking retries
-			if redisStore, ok := w.store.(interface {
-				RetryJobWithMetadata(string, interface{}, time.Duration) error
-			}); ok {
-				// For Redis, create a retry job with metadata instead of blocking
-				if redisJob, err := w.createRedisQueuedJob(job, job.RetryCount); err == nil {
-					if retryErr := redisStore.RetryJobWithMetadata(w.queueName, redisJob, delay); retryErr != nil {
-						w.logger.Error("failed to add job to retry queue", "workerID", workerID, "jobID", job.JobID, "error", retryErr)
-					} else {
-						w.logger.Info("job added to retry queue for later processing", "workerID", workerID, "jobID", job.JobID, "retryCount", job.RetryCount, "delay", delay)
-						// Don't acknowledge the job yet - it will be processed again from retry queue
-						retryHandled = true
-					}
-				} else {
-					w.logger.Error("failed to create retry job metadata", "workerID", workerID, "jobID", job.JobID, "error", err)
-				}
-			} else if sqsStore, ok := w.store.(interface {
-				RetryJobWithMetadata(string, interface{}, time.Duration) error
-			}); ok {
-				// Check if the driver type is SQS for visibility timeout retry
-				if w.config.Driver == "sqs" {
-					// For SQS, try to directly call the method on the concrete type
-					// We'll use a more robust retry method that creates the SQS job internally
-					if retryErr := sqsStore.RetryJobWithMetadata(w.queueName, job, delay); retryErr != nil {
-						w.logger.Error("failed to change message visibility for retry", "workerID", workerID, "jobID", job.JobID, "error", retryErr)
-					} else {
-						w.logger.Info("job scheduled for retry using visibility timeout", "workerID", workerID, "jobID", job.JobID, "retryCount", job.RetryCount+1, "delay", delay)
-						// Don't acknowledge the job - let it be redelivered after visibility timeout
-						retryHandled = true
-					}
-				}
-			}
-
-			// If retry was handled by driver-specific mechanism, return early
-			if retryHandled {
-				return
-			}
-
-			// Fallback to blocking retry (for memory driver or if driver-specific retry failed)
 			w.logger.Info("Using fallback blocking retry", "workerID", workerID, "jobID", job.JobID, "delay", delay)
-			time.Sleep(delay)
-			if err := w.store.Retry(job.Job, delay); err != nil {
+
+			if err := w.store.RetryJobWithMetadata(w.queueName, job, delay); err != nil {
 				w.logger.Error("Fallback retry failed", "workerID", workerID, "jobID", job.JobID, "error", err)
 			}
 		}
@@ -445,27 +401,4 @@ func calculateMetricsBufferSize(config config.Config) int {
 	}
 
 	return calculatedSize
-}
-
-// createRedisQueuedJob creates a RedisQueuedJob from a JobContext for retry purposes
-func (w *Worker) createRedisQueuedJob(jobCtx job.JobContext, retryCount int) (job.RedisQueuedJob, error) {
-	// Marshal the actual job
-	jobPayload, err := json.Marshal(jobCtx.Job)
-	if err != nil {
-		return job.RedisQueuedJob{}, fmt.Errorf("failed to marshal job: %w", err)
-	}
-
-	// Get job name using utils
-	jobName := utils.GetJobName(jobCtx.Job)
-	if jobName == "" {
-		return job.RedisQueuedJob{}, fmt.Errorf("could not determine job name from type")
-	}
-
-	return job.RedisQueuedJob{
-		Job:        jobPayload,
-		JobName:    jobName,
-		ID:         jobCtx.JobID,
-		EnqueuedAt: jobCtx.EnqueuedAt,
-		RetryCount: retryCount,
-	}, nil
 }

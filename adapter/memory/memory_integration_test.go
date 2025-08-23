@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saravanasai/goqueue/adapter/utils"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/job"
 )
@@ -82,33 +81,135 @@ func TestMemoryIntegrationEnqueueDequeueMetrics(t *testing.T) {
 	}
 }
 
-func TestMemoryIntegrationRetryRequeues(t *testing.T) {
-	store := setupMemoryStore(t)
-	rjob := &TestJob{ID: "r1", Data: "retry"}
-	qname := utils.GetJobName(rjob)
-	if qname == "" {
-		qname = "default"
-	}
-	if err := store.Retry(rjob, 50*time.Millisecond); err != nil {
-		t.Fatalf("Retry failed: %v", err)
-	}
-	// wait a little longer than the retry delay
-	time.Sleep(80 * time.Millisecond)
-	popped, err := store.Pop(qname)
-	if err != nil {
-		t.Fatalf("Pop after Retry failed: %v", err)
-	}
-	if popped.Job == nil {
-		t.Fatal("expected job from Pop after Retry")
-	}
-	if err := store.Ack(qname, popped.JobID); err != nil {
-		t.Fatalf("Ack after Retry failed: %v", err)
-	}
-}
-
 func TestMemoryIntegrationIsHealthy(t *testing.T) {
 	store := setupMemoryStore(t)
 	if !store.IsHealthy() {
 		t.Fatalf("expected IsHealthy true")
+	}
+}
+
+func TestMemoryIntegrationPushWithDelay(t *testing.T) {
+	store := setupMemoryStore(t)
+	q := "integration_q_delay"
+	tj := &TestJob{ID: "d1", Data: "delayed"}
+	delay := 5 * time.Second
+	if err := store.Push(q, tj, delay); err != nil {
+		t.Fatalf("Push with delay failed: %v", err)
+	}
+	// Should not be available immediately
+	_, err := store.Pop(q)
+	if err == nil {
+		t.Fatalf("expected no job ready to run immediately after delay push")
+	}
+	time.Sleep(delay + 100*time.Millisecond)
+	jc, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop after delay failed: %v", err)
+	}
+	got, ok := jc.Job.(*TestJob)
+	if !ok || got.ID != "d1" {
+		t.Fatalf("expected delayed job, got %+v", jc.Job)
+	}
+	if err := store.Ack(q, jc.JobID); err != nil {
+		t.Fatalf("Ack after delay failed: %v", err)
+	}
+}
+
+func TestMemoryIntegrationPushBatchWithDelay(t *testing.T) {
+	store := setupMemoryStore(t)
+	q := "integration_q_batch_delay"
+	jobs := []job.Job{
+		&TestJob{ID: "bd1", Data: "batch1"},
+		&TestJob{ID: "bd2", Data: "batch2"},
+	}
+	delay := 5 * time.Second
+	if err := store.PushBatch(q, jobs, delay); err != nil {
+		t.Fatalf("PushBatch with delay failed: %v", err)
+	}
+	// Should not be available immediately
+	_, err := store.Pop(q)
+	if err == nil {
+		t.Fatalf("expected no job ready to run immediately after batch delay push")
+	}
+	time.Sleep(delay + 100*time.Millisecond)
+	jc1, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop1 after batch delay failed: %v", err)
+	}
+	jc2, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop2 after batch delay failed: %v", err)
+	}
+	got1, ok1 := jc1.Job.(*TestJob)
+	got2, ok2 := jc2.Job.(*TestJob)
+	if !ok1 || !ok2 || got1.ID != "bd1" || got2.ID != "bd2" {
+		t.Fatalf("expected batch delayed jobs, got %+v %+v", jc1.Job, jc2.Job)
+	}
+	if err := store.Ack(q, jc1.JobID); err != nil {
+		t.Fatalf("Ack1 after batch delay failed: %v", err)
+	}
+	if err := store.Ack(q, jc2.JobID); err != nil {
+		t.Fatalf("Ack2 after batch delay failed: %v", err)
+	}
+}
+
+func TestMemoryIntegrationRetryJobWithMetadata(t *testing.T) {
+	store := setupMemoryStore(t)
+	q := "integration_q_retry_metadata"
+
+	// Original job
+	originalJob := &TestJob{ID: "retry1", Data: "original"}
+	if err := store.Push(q, originalJob); err != nil {
+		t.Fatalf("Initial Push failed: %v", err)
+	}
+
+	// Pop the job
+	jc, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop failed: %v", err)
+	}
+	if jc.Job == nil {
+		t.Fatal("expected job from Pop, got nil")
+	}
+
+	// Create a modified job for retry
+	retryJob := &TestJob{ID: "retry1", Data: "modified-for-retry"}
+	retryDelay := 2 * time.Second
+
+	// Update the job in the JobContext
+	jc.Job = retryJob
+
+	// Retry with metadata and delay
+	if err := store.RetryJobWithMetadata(q, jc, retryDelay); err != nil {
+		t.Fatalf("RetryJobWithMetadata failed: %v", err)
+	}
+
+	// Should not be able to pop immediately due to delay
+	_, err = store.Pop(q)
+	if err == nil {
+		t.Fatalf("expected no job available immediately after retry with delay")
+	}
+
+	// Wait for the delay to pass
+	time.Sleep(retryDelay + 100*time.Millisecond)
+
+	// Now should be able to pop the retried job
+	retryJc, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop after retry delay failed: %v", err)
+	}
+
+	// Verify the retried job
+	gotRetryJob, ok := retryJc.Job.(*TestJob)
+	if !ok {
+		t.Fatalf("expected *TestJob for retry, got %T", retryJc.Job)
+	}
+	if gotRetryJob.ID != "retry1" || gotRetryJob.Data != "modified-for-retry" {
+		t.Fatalf("retry job data mismatch: got=%+v, want={ID:retry1 Data:modified-for-retry}", gotRetryJob)
+	}
+
+	// Ack the retried job
+	if err := store.Ack(q, retryJc.JobID); err != nil {
+		t.Fatalf("Ack for retry job failed: %v", err)
 	}
 }

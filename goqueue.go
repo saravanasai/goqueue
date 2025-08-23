@@ -77,8 +77,21 @@ func RegisterJob(name string, constructor func() Job) {
 // Returns:
 //   - nil on successful dispatch
 //   - an error if dispatch fails
+//
+// Dispatch adds a single job to the queue for processing (immediate execution).
 func Dispatch(q *queue.Queue, payload job.Job) error {
 	return q.Dispatch(payload)
+}
+
+// DispatchWithDelay adds a single job to the queue for processing after a delay.
+// Delay can be specified in seconds, minutes, or hours using time.Duration.
+func DispatchWithDelay(q *queue.Queue, payload job.Job, delay time.Duration) error {
+	// If delay is zero, fallback to immediate dispatch for backward compatibility
+	if delay <= 0 {
+		return q.Dispatch(payload)
+	}
+	// Directly call the delayed method on the queue
+	return q.DispatchWithDelay(payload, delay)
 }
 
 // DispatchBatch adds multiple jobs to the queue for processing.
@@ -93,8 +106,19 @@ func Dispatch(q *queue.Queue, payload job.Job) error {
 // Returns:
 //   - nil on successful batch dispatch
 //   - an error if batch dispatch fails
+//
+// DispatchBatch adds multiple jobs to the queue for processing (immediate execution).
 func DispatchBatch(q *queue.Queue, jobs []job.Job) error {
 	return q.DispatchBatch(jobs)
+}
+
+// DispatchBatchWithDelay adds multiple jobs to the queue for processing after a delay.
+// Delay can be specified in seconds, minutes, or hours using time.Duration.
+func DispatchBatchWithDelay(q *queue.Queue, jobs []job.Job, delay time.Duration) error {
+	if delay <= 0 {
+		return q.DispatchBatch(jobs)
+	}
+	return q.DispatchBatchWithDelay(jobs, delay)
 }
 
 // StartWorker launches worker goroutines to process jobs from the queue.

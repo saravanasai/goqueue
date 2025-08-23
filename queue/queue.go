@@ -115,10 +115,20 @@ func (q *Queue) Dispatch(job job.Job) error {
 	return q.dispatcher.Dispatch(q.queueName, job)
 }
 
+// DispatchWithDelay adds a new job to the queue for processing after a delay.
+func (q *Queue) DispatchWithDelay(job job.Job, delay time.Duration) error {
+	return q.dispatcher.DispatchWithDelay(q.queueName, job, delay)
+}
+
 // DispatchBatch adds multiple jobs to the queue for processing.
 // The jobs will be stored in the backend and picked up by available workers.
 func (q *Queue) DispatchBatch(jobs []job.Job) error {
 	return q.dispatcher.DispatchBatch(q.queueName, jobs)
+}
+
+// DispatchBatchWithDelay adds multiple jobs to the queue for processing after a delay.
+func (q *Queue) DispatchBatchWithDelay(jobs []job.Job, delay time.Duration) error {
+	return q.dispatcher.DispatchBatchWithDelay(q.queueName, jobs, delay)
 }
 
 // StartWorkers launches the specified number of worker goroutines to process jobs.

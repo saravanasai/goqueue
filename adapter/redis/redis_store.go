@@ -39,6 +39,16 @@ type RedisStore struct {
 	retryPoller  *retryPoller
 }
 
+// scheduleDelayedJob adds a job payload to the retry ZSET with the given delay
+func (rs *RedisStore) scheduleDelayedJob(ctx context.Context, queueName string, payload interface{}, delay time.Duration) error {
+	retryQueueName := retryQueuePrefix + queueName
+	retryTimestamp := time.Now().Add(delay).Unix()
+	return rs.client.ZAdd(ctx, retryQueueName, redis.Z{
+		Score:  float64(retryTimestamp),
+		Member: payload,
+	}).Err()
+}
+
 // retryPoller handles moving jobs from retry queue to main queue
 type retryPoller struct {
 	store     *RedisStore
@@ -66,27 +76,23 @@ func NewRedisStore(client *redis.Client, config config.Config, redisManager *man
 	return rs
 }
 
-func (rs *RedisStore) Push(queueName string, jb job.Job) error {
-
+// Push supports optional delay. If delay is provided, job is scheduled in retry ZSET.
+func (rs *RedisStore) Push(queueName string, jb job.Job, delay ...time.Duration) error {
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
 		rs.logger.Error("redis instance is currently unhealthy, cannot push job", "queue", queueName)
 		return fmt.Errorf("redis instance is currently unhealthy, cannot push job")
 	}
 
 	jobName := utils.GetJobName(jb)
-
-	// Marshal the actual job separately
 	jobPayload, err := json.Marshal(jb)
 	if err != nil {
 		rs.logger.Error("failed to marshal job", "error", err, "queue", queueName)
 		return fmt.Errorf("failed to marshal job: %w", err)
 	}
-
 	if jobName == "" {
 		rs.logger.Error("could not determine job name from type", "queue", queueName)
 		return fmt.Errorf("could not determine job name from type")
 	}
-	// Create RedisQueuedJob
 	meta := job.RedisQueuedJob{
 		Job:        jobPayload,
 		JobName:    jobName,
@@ -94,24 +100,27 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 		EnqueuedAt: time.Now(),
 		RetryCount: 0,
 	}
-
 	payload, err := json.Marshal(meta)
 	if err != nil {
 		rs.logger.Error("failed to marshal job metadata", "error", err, "queue", queueName)
 		return fmt.Errorf("failed to marshal job metadata: %w", err)
 	}
-
 	ctx := context.Background()
 	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 	if err := rs.client.HSet(ctx, indexKey, meta.ID, payload).Err(); err != nil {
 		rs.logger.Error("failed to set job in index", "error", err, "queue", queueName)
 		return err
 	}
+	// If delay is provided and > 0, schedule in retry ZSET
+	if len(delay) > 0 && delay[0] > 0 {
+		return rs.scheduleDelayedJob(ctx, queueName, payload, delay[0])
+	}
+	// Immediate job: push to main queue
 	return rs.client.LPush(ctx, queueName, payload).Err()
 }
 
-// PushBatch adds multiple jobs to the Redis queue in a single LPUSH call.
-func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
+// PushBatch adds multiple jobs to the Redis queue, supports optional delay for all jobs.
+func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job, delay ...time.Duration) error {
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
 		rs.logger.Error("redis instance is currently unhealthy, cannot push jobs", "queue", queueName)
 		return fmt.Errorf("redis instance is currently unhealthy, cannot push jobs")
@@ -119,6 +128,12 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 	ctx := context.Background()
 	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 	var payloads []interface{}
+	var zPayloads []redis.Z
+	useDelay := len(delay) > 0 && delay[0] > 0
+	var retryTimestamp int64
+	if useDelay {
+		retryTimestamp = time.Now().Add(delay[0]).Unix()
+	}
 	for _, jb := range jobs {
 		jobName := utils.GetJobName(jb)
 		jobPayload, err := json.Marshal(jb)
@@ -146,13 +161,27 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 			rs.logger.Error("failed to set job in index", "error", err, "queue", queueName)
 			continue
 		}
-		payloads = append(payloads, payload)
+		if useDelay {
+			zPayloads = append(zPayloads, redis.Z{
+				Score:  float64(retryTimestamp),
+				Member: payload,
+			})
+		} else {
+			payloads = append(payloads, payload)
+		}
 	}
-	if len(payloads) == 0 {
+	if useDelay && len(zPayloads) > 0 {
+		retryQueueName := retryQueuePrefix + queueName
+		if err := rs.client.ZAdd(ctx, retryQueueName, zPayloads...).Err(); err != nil {
+			rs.logger.Error("failed to add jobs to retry queue", "error", err, "queue", queueName)
+			return err
+		}
 		return nil
 	}
-	return rs.client.LPush(ctx, queueName, payloads...).Err()
-
+	if !useDelay && len(payloads) > 0 {
+		return rs.client.LPush(ctx, queueName, payloads...).Err()
+	}
+	return nil
 }
 
 func (rs *RedisStore) Pop(queueName string) (job.JobContext, error) {
@@ -217,12 +246,7 @@ func (rs *RedisStore) Retry(job job.Job, delay time.Duration) error {
 }
 
 // RetryJobWithMetadata pushes a job to the retry queue with retry metadata
-func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface{}, delay time.Duration) error {
-	// Type assert to RedisQueuedJob
-	redisJob, ok := queuedJob.(job.RedisQueuedJob)
-	if !ok {
-		return fmt.Errorf("invalid job type for Redis retry, expected RedisQueuedJob")
-	}
+func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob job.JobContext, delay ...time.Duration) error {
 
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
 		rs.logger.Error("redis instance is currently unhealthy, cannot retry job", "queue", queueName)
@@ -231,16 +255,35 @@ func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface
 
 	ctx := context.Background()
 	retryQueueName := retryQueuePrefix + queueName
-	retryTimestamp := time.Now().Add(delay).Unix()
+	retryTimestamp := time.Now().Add(delay[0]).Unix()
 
-	// Increment retry count
-	redisJob.RetryCount++
+	// Get job name and serialize the original job
+	jobName := utils.GetJobName(queuedJob.Job)
+	if jobName == "" {
+		rs.logger.Error("could not determine job name from type", "queue", queueName)
+		return fmt.Errorf("could not determine job name from type")
+	}
 
-	// Serialize the job with updated metadata
-	payload, err := json.Marshal(redisJob)
+	jobPayload, err := json.Marshal(queuedJob.Job)
 	if err != nil {
 		rs.logger.Error("failed to marshal job for retry", "error", err, "queue", queueName)
 		return fmt.Errorf("failed to marshal job for retry: %w", err)
+	}
+
+	// Create RedisQueuedJob with incremented retry count
+	meta := job.RedisQueuedJob{
+		Job:        jobPayload,
+		JobName:    jobName,
+		ID:         queuedJob.JobID,
+		EnqueuedAt: queuedJob.EnqueuedAt,
+		RetryCount: queuedJob.RetryCount + 1,
+	}
+
+	// Serialize the job with updated metadata
+	payload, err := json.Marshal(meta)
+	if err != nil {
+		rs.logger.Error("failed to marshal job metadata for retry", "error", err, "queue", queueName)
+		return fmt.Errorf("failed to marshal job metadata for retry: %w", err)
 	}
 
 	// Get the original job payload from processing queue for cleanup
@@ -248,13 +291,20 @@ func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface
 	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 
 	// Get original payload using job ID for cleanup
-	originalPayload, err := rs.client.HGet(ctx, indexKey, redisJob.ID).Result()
+	originalPayload, err := rs.client.HGet(ctx, indexKey, queuedJob.JobID).Result()
 	if err == nil {
 		// Clean up the processing queue (remove the original job)
 		rs.client.Eval(ctx, cleanupProcessingJobScript, []string{processingQueue}, originalPayload)
 	}
 
+	// Update job in index
+	if err := rs.client.HSet(ctx, indexKey, meta.ID, payload).Err(); err != nil {
+		rs.logger.Error("failed to set job in index for retry", "error", err, "queue", queueName)
+		return fmt.Errorf("failed to set job in index for retry: %w", err)
+	}
+
 	// Add to retry sorted set with retry timestamp as score
+	rs.logger.Info("job added to retry queue", "queue", queueName, "jobID", meta.ID, "retryCount", meta.RetryCount, "retryAt", retryTimestamp)
 	err = rs.client.ZAdd(ctx, retryQueueName, redis.Z{
 		Score:  float64(retryTimestamp),
 		Member: payload,
@@ -266,9 +316,9 @@ func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface
 	}
 
 	// Update the job index with the new retry payload
-	rs.client.HSet(ctx, indexKey, redisJob.ID, payload)
+	rs.client.HSet(ctx, indexKey, queuedJob.JobID, payload)
 
-	rs.logger.Info("job added to retry queue", "queue", queueName, "jobID", redisJob.ID, "retryCount", redisJob.RetryCount, "retryAt", time.Unix(retryTimestamp, 0))
+	rs.logger.Info("job added to retry queue", "queue", queueName, "jobID", queuedJob.JobID, "retryCount", queuedJob.RetryCount, "retryAt", time.Unix(retryTimestamp, 0))
 	return nil
 }
 

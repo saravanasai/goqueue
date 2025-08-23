@@ -196,8 +196,8 @@ func (s *SQSStore) createSQSQueuedJob(jobCtx job.JobContext, retryCount int) (SQ
 	}, nil
 }
 
-// Push adds a single job to the queue
-func (s *SQSStore) Push(queueName string, jb job.Job) error {
+// Push adds a single job to the queue, with optional delay
+func (s *SQSStore) Push(queueName string, jb job.Job, delay ...time.Duration) error {
 	// Get job name from type
 	jobName := utils.GetJobName(jb)
 	if jobName == "" {
@@ -266,6 +266,9 @@ func (s *SQSStore) Push(queueName string, jb job.Job) error {
 		MessageAttributes: messageAttributes,
 	}
 
+	// Handle delay parameter (SQS supports up to 15 minutes)
+	sendInput.DelaySeconds = calculateDelaySeconds(delay...)
+
 	// Add FIFO queue specific attributes if the queue is FIFO
 	sqsCfg, ok := s.config.DriverConfig.(jobConfig.SQSConfig)
 	if ok && sqsCfg.IsFifo {
@@ -298,10 +301,9 @@ func (s *SQSStore) Push(queueName string, jb job.Job) error {
 	return nil
 }
 
-// PushBatch adds multiple jobs to the queue in a single call
-func (s *SQSStore) PushBatch(queueName string, jobs []job.Job) error {
+// PushBatch adds multiple jobs to the queue in a single call, with optional delay
+func (s *SQSStore) PushBatch(queueName string, jobs []job.Job, delay ...time.Duration) error {
 	// SQS SendMessageBatch can only handle up to 10 messages at a time
-	// so we need to batch them in groups of 10
 	batchSize := 10
 	for i := 0; i < len(jobs); i += batchSize {
 		end := i + batchSize
@@ -310,21 +312,23 @@ func (s *SQSStore) PushBatch(queueName string, jobs []job.Job) error {
 		}
 
 		batch := jobs[i:end]
-		if err := s.pushBatch(queueName, batch); err != nil {
+		if err := s.pushBatch(queueName, batch, delay...); err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-// pushBatch handles pushing a batch of up to 10 jobs to SQS
-func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
+// pushBatch handles pushing a batch of up to 10 jobs to SQS, with optional delay
+func (s *SQSStore) pushBatch(queueName string, jobs []job.Job, delay ...time.Duration) error {
 	var entries []types.SendMessageBatchRequestEntry
 
 	// Get SQS configuration for FIFO settings
 	sqsCfg, isSQSConfig := s.config.DriverConfig.(jobConfig.SQSConfig)
 	isFifo := isSQSConfig && sqsCfg.IsFifo
+
+	// Calculate delay seconds (SQS supports up to 15 minutes)
+	delaySeconds := calculateDelaySeconds(delay...)
 
 	for i, jb := range jobs {
 		entry, ok, err := s.buildBatchEntry(jb, i, queueName, isFifo, sqsCfg)
@@ -335,6 +339,10 @@ func (s *SQSStore) pushBatch(queueName string, jobs []job.Job) error {
 		if !ok {
 			// skipped (no job name or marshal error) continue to next
 			continue
+		}
+		// Set DelaySeconds for each entry if delay is specified
+		if delaySeconds > 0 {
+			entry.DelaySeconds = delaySeconds
 		}
 		entries = append(entries, entry)
 	}
@@ -578,22 +586,14 @@ func (s *SQSStore) Retry(job job.Job, delay time.Duration) error {
 
 // RetryJobWithMetadata handles job retries using SQS ChangeMessageVisibility
 // This provides the same retry behavior as the Redis driver using SQS's native visibility timeout
-func (s *SQSStore) RetryJobWithMetadata(queueName string, queuedJob interface{}, delay time.Duration) error {
+func (s *SQSStore) RetryJobWithMetadata(queueName string, queuedJob job.JobContext, delay ...time.Duration) error {
 	var sqsJob SQSQueuedJob
 	var err error
 
-	// Handle both SQSQueuedJob and JobContext types
-	switch v := queuedJob.(type) {
-	case SQSQueuedJob:
-		sqsJob = v
-	case job.JobContext:
-		// Create SQSQueuedJob from JobContext
-		sqsJob, err = s.createSQSQueuedJob(v, v.RetryCount+1)
-		if err != nil {
-			return fmt.Errorf("failed to create SQS job for retry: %w", err)
-		}
-	default:
-		return fmt.Errorf("invalid job type for SQS retry, expected SQSQueuedJob or JobContext")
+	// Create SQSQueuedJob from JobContext
+	sqsJob, err = s.createSQSQueuedJob(queuedJob, queuedJob.RetryCount+1)
+	if err != nil {
+		return fmt.Errorf("failed to create SQS job for retry: %w", err)
 	}
 
 	// Check if receipt handle is available
@@ -604,19 +604,19 @@ func (s *SQSStore) RetryJobWithMetadata(queueName string, queuedJob interface{},
 	// Calculate visibility timeout from delay
 	// SQS supports visibility timeout up to 12 hours (43200 seconds)
 	maxSQSVisibilityTimeout := 12 * time.Hour
-	if delay > maxSQSVisibilityTimeout {
+	if delay[0] > maxSQSVisibilityTimeout {
 		s.logger.Error("Retry delay exceeds SQS maximum visibility timeout",
 			"delay", delay,
 			"maxTimeout", maxSQSVisibilityTimeout,
 			"jobID", sqsJob.ID)
-		delay = maxSQSVisibilityTimeout
+		delay[0] = maxSQSVisibilityTimeout
 	}
 
 	// Change the message visibility timeout to implement retry delay
 	_, err = s.client.ChangeMessageVisibility(context.Background(), &sqs.ChangeMessageVisibilityInput{
 		QueueUrl:          aws.String(s.getQueueURL(queueName)),
 		ReceiptHandle:     aws.String(sqsJob.ReceiptHandle),
-		VisibilityTimeout: int32(delay.Seconds()),
+		VisibilityTimeout: int32(delay[0].Seconds()),
 	})
 
 	if err != nil {
@@ -743,4 +743,17 @@ func (s *SQSStore) getQueueURL(queueName string) string {
 	s.queueURLsMutex.Unlock()
 
 	return s.sqsConfig.QueueURL
+}
+
+// calculateDelaySeconds returns the SQS-compatible delay in seconds (max 15 minutes)
+func calculateDelaySeconds(delay ...time.Duration) int32 {
+	if len(delay) == 0 || delay[0] <= 0 {
+		return 0
+	}
+	maxDelay := 15 * time.Minute
+	d := delay[0]
+	if d > maxDelay {
+		d = maxDelay
+	}
+	return int32(d.Seconds())
 }
