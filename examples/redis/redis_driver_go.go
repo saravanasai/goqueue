@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/saravanasai/goqueue"
@@ -44,14 +45,19 @@ func main() {
 	}
 	fmt.Println("Job dispatched successfully")
 
+	fmt.Printf("Dispatching delayed email job to: %s\n", job.To)
+	if err := q.DispatchWithDelay(job, 1*time.Minute); err != nil {
+		log.Fatalf("Failed to dispatch job: %v", err)
+	}
+	fmt.Println("Email job delayed dispatched successfully")
+
 	// Wait to allow workers to process the job
 	fmt.Println("Waiting 2 seconds for job processing...")
 	time.Sleep(2 * time.Second)
 
-	// Graceful shutdown
-	fmt.Println("Shutting down queue...")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	q.Shutdown(shutdownCtx)
-	fmt.Println("Queue shutdown complete")
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	wg.Wait()
+
 }
