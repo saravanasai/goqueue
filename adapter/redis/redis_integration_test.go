@@ -130,6 +130,84 @@ func TestRedisIntegrationIsHealthy(t *testing.T) {
 	}
 }
 
+func TestRedisIntegrationPushWithDelay(t *testing.T) {
+	miniRedis, client := setupTestRedis(t)
+	defer miniRedis.Close()
+
+	testLogger := logger.NewZapLogger()
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
+
+	ensureIntegrationJobRegistered()
+
+	q := "integration_redis_delay"
+	job := &IntegrationTestJob{ID: "delay1", Data: "delayed-job"}
+
+	// Use a shorter delay for testing but long enough to measure
+	delay := 3 * time.Second
+
+	// Record start time
+	startTime := time.Now()
+
+	// Push job with delay
+	if err := store.Push(q, job, delay); err != nil {
+		t.Fatalf("Push with delay failed: %v", err)
+	}
+
+	// Verify job is in the retry queue with correct score
+	ctx := context.Background()
+	retryQueueName := retryQueuePrefix + q
+	zrangeResult, err := client.ZRangeWithScores(ctx, retryQueueName, 0, -1).Result()
+	if err != nil {
+		t.Fatalf("Failed to check retry queue: %v", err)
+	}
+
+	if len(zrangeResult) != 1 {
+		t.Fatalf("Expected 1 job in retry queue, found %d", len(zrangeResult))
+	}
+
+	// Verify timestamp is approximately correct (within 1 second)
+	expectedTime := float64(time.Now().Add(delay).Unix())
+	scoreTime := zrangeResult[0].Score
+	if scoreTime < expectedTime-1 || scoreTime > expectedTime+1 {
+		t.Fatalf("Delay timestamp incorrect. Got %v, expected around %v",
+			time.Unix(int64(scoreTime), 0), time.Unix(int64(expectedTime), 0))
+	}
+
+	// Wait for the delay time plus a buffer for retry poller
+	time.Sleep(delay + 2*time.Second)
+
+	// Now the job should be available
+	jc, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop after delay failed: %v", err)
+	}
+	if jc.Job == nil {
+		t.Fatalf("Expected to get job after delay expired, but got nil")
+	}
+
+	// Verify it's the correct job
+	gotJob, ok := jc.Job.(*IntegrationTestJob)
+	if !ok {
+		t.Fatalf("Expected *IntegrationTestJob, got %T", jc.Job)
+	}
+	if gotJob.ID != "delay1" || gotJob.Data != "delayed-job" {
+		t.Fatalf("Job data mismatch: got=%+v, want={ID:delay1 Data:delayed-job}", gotJob)
+	}
+
+	// Verify the elapsed time is at least the delay duration
+	elapsed := time.Since(startTime)
+	if elapsed < delay {
+		t.Fatalf("Job was available before delay period: elapsed=%v, delay=%v", elapsed, delay)
+	}
+
+	// Acknowledge the job
+	if err := store.Ack(q, jc.JobID); err != nil {
+		t.Fatalf("Ack after delay failed: %v", err)
+	}
+}
+
 func TestRedisIntegrationRetryJobWithMetadata(t *testing.T) {
 	miniRedis, client := setupTestRedis(t)
 	defer miniRedis.Close()
