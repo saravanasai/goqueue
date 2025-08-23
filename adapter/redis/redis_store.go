@@ -246,12 +246,7 @@ func (rs *RedisStore) Retry(job job.Job, delay time.Duration) error {
 }
 
 // RetryJobWithMetadata pushes a job to the retry queue with retry metadata
-func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface{}, delay time.Duration) error {
-	// Type assert to RedisQueuedJob
-	redisJob, ok := queuedJob.(job.RedisQueuedJob)
-	if !ok {
-		return fmt.Errorf("invalid job type for Redis retry, expected RedisQueuedJob")
-	}
+func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob job.JobContext, delay time.Duration) error {
 
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
 		rs.logger.Error("redis instance is currently unhealthy, cannot retry job", "queue", queueName)
@@ -262,14 +257,33 @@ func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface
 	retryQueueName := retryQueuePrefix + queueName
 	retryTimestamp := time.Now().Add(delay).Unix()
 
-	// Increment retry count
-	redisJob.RetryCount++
+	// Get job name and serialize the original job
+	jobName := utils.GetJobName(queuedJob.Job)
+	if jobName == "" {
+		rs.logger.Error("could not determine job name from type", "queue", queueName)
+		return fmt.Errorf("could not determine job name from type")
+	}
 
-	// Serialize the job with updated metadata
-	payload, err := json.Marshal(redisJob)
+	jobPayload, err := json.Marshal(queuedJob.Job)
 	if err != nil {
 		rs.logger.Error("failed to marshal job for retry", "error", err, "queue", queueName)
 		return fmt.Errorf("failed to marshal job for retry: %w", err)
+	}
+
+	// Create RedisQueuedJob with incremented retry count
+	meta := job.RedisQueuedJob{
+		Job:        jobPayload,
+		JobName:    jobName,
+		ID:         queuedJob.JobID,
+		EnqueuedAt: queuedJob.EnqueuedAt,
+		RetryCount: queuedJob.RetryCount + 1,
+	}
+
+	// Serialize the job with updated metadata
+	payload, err := json.Marshal(meta)
+	if err != nil {
+		rs.logger.Error("failed to marshal job metadata for retry", "error", err, "queue", queueName)
+		return fmt.Errorf("failed to marshal job metadata for retry: %w", err)
 	}
 
 	// Get the original job payload from processing queue for cleanup
@@ -277,13 +291,20 @@ func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface
 	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 
 	// Get original payload using job ID for cleanup
-	originalPayload, err := rs.client.HGet(ctx, indexKey, redisJob.ID).Result()
+	originalPayload, err := rs.client.HGet(ctx, indexKey, queuedJob.JobID).Result()
 	if err == nil {
 		// Clean up the processing queue (remove the original job)
 		rs.client.Eval(ctx, cleanupProcessingJobScript, []string{processingQueue}, originalPayload)
 	}
 
+	// Update job in index
+	if err := rs.client.HSet(ctx, indexKey, meta.ID, payload).Err(); err != nil {
+		rs.logger.Error("failed to set job in index for retry", "error", err, "queue", queueName)
+		return fmt.Errorf("failed to set job in index for retry: %w", err)
+	}
+
 	// Add to retry sorted set with retry timestamp as score
+	rs.logger.Info("job added to retry queue", "queue", queueName, "jobID", meta.ID, "retryCount", meta.RetryCount, "retryAt", retryTimestamp)
 	err = rs.client.ZAdd(ctx, retryQueueName, redis.Z{
 		Score:  float64(retryTimestamp),
 		Member: payload,
@@ -295,9 +316,9 @@ func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob interface
 	}
 
 	// Update the job index with the new retry payload
-	rs.client.HSet(ctx, indexKey, redisJob.ID, payload)
+	rs.client.HSet(ctx, indexKey, queuedJob.JobID, payload)
 
-	rs.logger.Info("job added to retry queue", "queue", queueName, "jobID", redisJob.ID, "retryCount", redisJob.RetryCount, "retryAt", time.Unix(retryTimestamp, 0))
+	rs.logger.Info("job added to retry queue", "queue", queueName, "jobID", queuedJob.JobID, "retryCount", queuedJob.RetryCount, "retryAt", time.Unix(retryTimestamp, 0))
 	return nil
 }
 

@@ -242,13 +242,11 @@ func TestRedisIntegrationRetryJobWithMetadata(t *testing.T) {
 	}
 
 	// Prepare job for retry with modified data
-	var redisJob job.RedisQueuedJob
+	var redisJob job.JobContext
 	json.Unmarshal([]byte(payload), &redisJob)
 
 	modifiedJob := &IntegrationTestJob{ID: "retry1", Data: "modified-for-retry"}
-	jobBytes, _ := json.Marshal(modifiedJob)
-	redisJob.Job = jobBytes
-
+	redisJob.Job = modifiedJob
 	// Retry with delay
 	retryDelay := 2 * time.Second
 	if err := store.RetryJobWithMetadata(q, redisJob, retryDelay); err != nil {
