@@ -26,7 +26,7 @@ func TestVersionConstant(t *testing.T) {
 	}
 
 	// Should start with 0.0.1 for initial release
-	if Version != "0.0.1" {
+	if Version != "0.0.2" {
 		t.Logf("Version is %s (this test will need updating for new versions)", Version)
 	}
 }
