@@ -280,5 +280,4 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 
 Upcoming features planned for GoQueue:
 
-- **Scheduling**: Support for delayed and recurring jobs.
 - **Postgres Driver**: SQL-backed queue for teams preferring transactional guarantees.
