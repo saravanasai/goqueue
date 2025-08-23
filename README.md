@@ -87,6 +87,12 @@ func (e EmailJob) Process(ctx context.Context) error {
     return nil
 }
 
+// Register job type for serialization
+func init() {
+    goqueue.RegisterJob("EmailJob", func() goqueue.Job {
+        return &EmailJob{}
+    })
+}
 
 func main() {
     // Create a queue with in-memory backend
