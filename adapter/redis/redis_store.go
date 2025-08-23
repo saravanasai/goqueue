@@ -66,27 +66,23 @@ func NewRedisStore(client *redis.Client, config config.Config, redisManager *man
 	return rs
 }
 
-func (rs *RedisStore) Push(queueName string, jb job.Job) error {
-
+// Push supports optional delay. If delay is provided, job is scheduled in retry ZSET.
+func (rs *RedisStore) Push(queueName string, jb job.Job, delay ...time.Duration) error {
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
 		rs.logger.Error("redis instance is currently unhealthy, cannot push job", "queue", queueName)
 		return fmt.Errorf("redis instance is currently unhealthy, cannot push job")
 	}
 
 	jobName := utils.GetJobName(jb)
-
-	// Marshal the actual job separately
 	jobPayload, err := json.Marshal(jb)
 	if err != nil {
 		rs.logger.Error("failed to marshal job", "error", err, "queue", queueName)
 		return fmt.Errorf("failed to marshal job: %w", err)
 	}
-
 	if jobName == "" {
 		rs.logger.Error("could not determine job name from type", "queue", queueName)
 		return fmt.Errorf("could not determine job name from type")
 	}
-	// Create RedisQueuedJob
 	meta := job.RedisQueuedJob{
 		Job:        jobPayload,
 		JobName:    jobName,
@@ -94,24 +90,32 @@ func (rs *RedisStore) Push(queueName string, jb job.Job) error {
 		EnqueuedAt: time.Now(),
 		RetryCount: 0,
 	}
-
 	payload, err := json.Marshal(meta)
 	if err != nil {
 		rs.logger.Error("failed to marshal job metadata", "error", err, "queue", queueName)
 		return fmt.Errorf("failed to marshal job metadata: %w", err)
 	}
-
 	ctx := context.Background()
 	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 	if err := rs.client.HSet(ctx, indexKey, meta.ID, payload).Err(); err != nil {
 		rs.logger.Error("failed to set job in index", "error", err, "queue", queueName)
 		return err
 	}
+	// If delay is provided and > 0, schedule in retry ZSET
+	if len(delay) > 0 && delay[0] > 0 {
+		retryQueueName := retryQueuePrefix + queueName
+		retryTimestamp := time.Now().Add(delay[0]).Unix()
+		return rs.client.ZAdd(ctx, retryQueueName, redis.Z{
+			Score:  float64(retryTimestamp),
+			Member: payload,
+		}).Err()
+	}
+	// Immediate job: push to main queue
 	return rs.client.LPush(ctx, queueName, payload).Err()
 }
 
-// PushBatch adds multiple jobs to the Redis queue in a single LPUSH call.
-func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
+// PushBatch adds multiple jobs to the Redis queue, supports optional delay for all jobs.
+func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job, delay ...time.Duration) error {
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
 		rs.logger.Error("redis instance is currently unhealthy, cannot push jobs", "queue", queueName)
 		return fmt.Errorf("redis instance is currently unhealthy, cannot push jobs")
@@ -119,6 +123,12 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 	ctx := context.Background()
 	indexKey := fmt.Sprintf(JobIndexKeyFormat, queueName)
 	var payloads []interface{}
+	var zPayloads []redis.Z
+	useDelay := len(delay) > 0 && delay[0] > 0
+	var retryTimestamp int64
+	if useDelay {
+		retryTimestamp = time.Now().Add(delay[0]).Unix()
+	}
 	for _, jb := range jobs {
 		jobName := utils.GetJobName(jb)
 		jobPayload, err := json.Marshal(jb)
@@ -146,13 +156,27 @@ func (rs *RedisStore) PushBatch(queueName string, jobs []job.Job) error {
 			rs.logger.Error("failed to set job in index", "error", err, "queue", queueName)
 			continue
 		}
-		payloads = append(payloads, payload)
+		if useDelay {
+			zPayloads = append(zPayloads, redis.Z{
+				Score:  float64(retryTimestamp),
+				Member: payload,
+			})
+		} else {
+			payloads = append(payloads, payload)
+		}
 	}
-	if len(payloads) == 0 {
+	if useDelay && len(zPayloads) > 0 {
+		retryQueueName := retryQueuePrefix + queueName
+		if err := rs.client.ZAdd(ctx, retryQueueName, zPayloads...).Err(); err != nil {
+			rs.logger.Error("failed to add jobs to retry queue", "error", err, "queue", queueName)
+			return err
+		}
 		return nil
 	}
-	return rs.client.LPush(ctx, queueName, payloads...).Err()
-
+	if !useDelay && len(payloads) > 0 {
+		return rs.client.LPush(ctx, queueName, payloads...).Err()
+	}
+	return nil
 }
 
 func (rs *RedisStore) Pop(queueName string) (job.JobContext, error) {
