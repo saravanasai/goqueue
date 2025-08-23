@@ -13,23 +13,7 @@ Thank you for your interest in contributing to GoQueue!
 7. Push to your branch: `git push origin feature/amazing-feature`
 8. Open a Pull Request
 
-## 🧪 Testing
-
-```bash
-# Run all tests
-go test ./...
-
-# Run tests with coverage
-go test -cover ./...
-
-# Run E2E tests
-go test ./e2e/...
-
-# Skip SQS tests (requires AWS credentials)
-go test -short ./...
-```
-
-**Note**: All tests run locally without external dependencies. Redis tests use miniredis, SQS tests only require AWS credentials for live testing.
+**Note**: All tests run locally without external dependencies. Redis tests use redis, SQS tests only require AWS credentials for live testing.
 
 ## � Code Quality
 
