@@ -39,6 +39,16 @@ type RedisStore struct {
 	retryPoller  *retryPoller
 }
 
+// scheduleDelayedJob adds a job payload to the retry ZSET with the given delay
+func (rs *RedisStore) scheduleDelayedJob(ctx context.Context, queueName string, payload interface{}, delay time.Duration) error {
+	retryQueueName := retryQueuePrefix + queueName
+	retryTimestamp := time.Now().Add(delay).Unix()
+	return rs.client.ZAdd(ctx, retryQueueName, redis.Z{
+		Score:  float64(retryTimestamp),
+		Member: payload,
+	}).Err()
+}
+
 // retryPoller handles moving jobs from retry queue to main queue
 type retryPoller struct {
 	store     *RedisStore
@@ -103,12 +113,7 @@ func (rs *RedisStore) Push(queueName string, jb job.Job, delay ...time.Duration)
 	}
 	// If delay is provided and > 0, schedule in retry ZSET
 	if len(delay) > 0 && delay[0] > 0 {
-		retryQueueName := retryQueuePrefix + queueName
-		retryTimestamp := time.Now().Add(delay[0]).Unix()
-		return rs.client.ZAdd(ctx, retryQueueName, redis.Z{
-			Score:  float64(retryTimestamp),
-			Member: payload,
-		}).Err()
+		return rs.scheduleDelayedJob(ctx, queueName, payload, delay[0])
 	}
 	// Immediate job: push to main queue
 	return rs.client.LPush(ctx, queueName, payload).Err()

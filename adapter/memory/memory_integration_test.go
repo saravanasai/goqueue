@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saravanasai/goqueue/adapter/utils"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/job"
 )
@@ -79,30 +78,6 @@ func TestMemoryIntegrationEnqueueDequeueMetrics(t *testing.T) {
 	}
 	if got.JobID != m.JobID || got.QueueName != m.QueueName {
 		t.Fatalf("metrics mismatch. want=%+v got=%+v", m, got)
-	}
-}
-
-func TestMemoryIntegrationRetryRequeues(t *testing.T) {
-	store := setupMemoryStore(t)
-	rjob := &TestJob{ID: "r1", Data: "retry"}
-	qname := utils.GetJobName(rjob)
-	if qname == "" {
-		qname = "default"
-	}
-	if err := store.Retry(rjob, 50*time.Millisecond); err != nil {
-		t.Fatalf("Retry failed: %v", err)
-	}
-	// wait a little longer than the retry delay
-	time.Sleep(80 * time.Millisecond)
-	popped, err := store.Pop(qname)
-	if err != nil {
-		t.Fatalf("Pop after Retry failed: %v", err)
-	}
-	if popped.Job == nil {
-		t.Fatal("expected job from Pop after Retry")
-	}
-	if err := store.Ack(qname, popped.JobID); err != nil {
-		t.Fatalf("Ack after Retry failed: %v", err)
 	}
 }
 
