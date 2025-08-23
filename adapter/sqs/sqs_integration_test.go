@@ -3,6 +3,7 @@ package sqs
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -187,5 +188,133 @@ func TestSQSIntegrationIsHealthy(t *testing.T) {
 	store := NewSQSStoreWithClient(mock, sqsCfg, cfg, logger.NewZapLogger())
 	if !store.IsHealthy() {
 		t.Fatalf("expected store to be healthy")
+	}
+}
+
+func TestSQSIntegrationRetryJobWithMetadata(t *testing.T) {
+	// Test constants
+	const (
+		testQueue = "test-queue"
+		origData  = "original"
+		modData   = "modified-for-retry"
+	)
+
+	// Setup
+	sqsCfg, cfg := makeSQSConfig()
+	mock := &intMockSQSClient{}
+	store := NewSQSStoreWithClient(mock, sqsCfg, cfg, logger.NewZapLogger())
+	ensureSQSIntegrationRegistered()
+
+	// Create a test job and prepare mock for job operation
+	setupMocksAndJob(t, mock, testQueue, origData, modData)
+
+	// Phase 1: Pop the original job
+	jc, err := store.Pop(testQueue)
+	if err != nil {
+		t.Fatalf("Pop failed: %v", err)
+	}
+
+	// Verify original job data
+	verifyJobData(t, jc.Job, origData)
+
+	// Phase 2: Retry job with modified data
+	retryDelay := 3 * time.Second
+	modifiedJob := &SQSIntegrationJob{ID: "retry1", Data: modData}
+	jc.Job = modifiedJob
+
+	if err := store.RetryJobWithMetadata(testQueue, jc, retryDelay); err != nil {
+		t.Fatalf("RetryJobWithMetadata failed: %v", err)
+	}
+
+	// Phase 3: Verify retry by popping again (simulating after delay)
+	// First pop should return nothing (visibility timeout)
+	emptyJc, _ := store.Pop(testQueue)
+	if emptyJc.Job != nil {
+		t.Fatalf("Expected no job due to visibility timeout")
+	}
+
+	// Second pop should return retried job with incremented retry count
+	retryJc, _ := store.Pop(testQueue)
+	verifyJobData(t, retryJc.Job, modData)
+
+	// Verify retry count is incremented
+	if retryJc.RetryCount != 1 {
+		t.Fatalf("Expected retry count to be 1, got %d", retryJc.RetryCount)
+	}
+}
+
+// Helper functions to reduce cognitive complexity
+
+// setupMocksAndJob configures the mock client for the retry test
+func setupMocksAndJob(t *testing.T, mock *intMockSQSClient, queueName, origData, modData string) {
+	t.Helper()
+
+	// Create an original and modified job for the test
+	originalJob := &SQSIntegrationJob{ID: "retry1", Data: origData}
+	jobID := utils.GenerateID()
+
+	// Set up mock receive function to simulate the test scenario
+	receiveCallCount := 0
+	mock.ReceiveMessageFunc = func(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
+		receiveCallCount++
+
+		if receiveCallCount == 1 {
+			// First call: return original job
+			return createMockSQSResponse(originalJob, jobID, 0)
+		} else if receiveCallCount == 2 {
+			// Second call: return no messages (simulating visibility timeout)
+			return &sqs.ReceiveMessageOutput{Messages: []types.Message{}}, nil
+		} else {
+			// Third call: return modified job with incremented retry count
+			modifiedJob := &SQSIntegrationJob{ID: "retry1", Data: modData}
+			return createMockSQSResponse(modifiedJob, jobID, 1)
+		}
+	}
+
+	// Set up mock for ChangeMessageVisibility to track retry requests
+	mock.ChangeMessageVisibilityFunc = func(ctx context.Context, params *sqs.ChangeMessageVisibilityInput, optFns ...func(*sqs.Options)) (*sqs.ChangeMessageVisibilityOutput, error) {
+		return &sqs.ChangeMessageVisibilityOutput{}, nil
+	}
+}
+
+// createMockSQSResponse creates a mock SQS response message
+func createMockSQSResponse(job *SQSIntegrationJob, jobID string, retryCount int) (*sqs.ReceiveMessageOutput, error) {
+	jobBytes, _ := json.Marshal(job)
+	sqsJob := SQSQueuedJob{
+		Job:           jobBytes,
+		ID:            jobID,
+		JobName:       "SQSIntegrationJob",
+		EnqueuedAt:    time.Now(),
+		RetryCount:    retryCount,
+		ReceiptHandle: fmt.Sprintf("receipt-handle-%d", retryCount+1),
+	}
+
+	body, _ := json.Marshal(sqsJob)
+	return &sqs.ReceiveMessageOutput{
+		Messages: []types.Message{
+			{
+				Body:          awsString(string(body)),
+				ReceiptHandle: awsString(sqsJob.ReceiptHandle),
+				MessageAttributes: map[string]types.MessageAttributeValue{
+					attrJobID:      {StringValue: awsString(sqsJob.ID), DataType: awsString("String")},
+					attrRetryCount: {StringValue: awsString(fmt.Sprintf("%d", retryCount)), DataType: awsString("Number")},
+				},
+			},
+		},
+	}, nil
+}
+
+// verifyJobData checks that the job data matches expected values
+func verifyJobData(t *testing.T, j job.Job, expectedData string) {
+	t.Helper()
+
+	gotJob, ok := j.(*SQSIntegrationJob)
+	if !ok {
+		t.Fatalf("Expected SQSIntegrationJob, got %T", j)
+	}
+
+	if gotJob.ID != "retry1" || gotJob.Data != expectedData {
+		t.Fatalf("Job data mismatch: got {ID:%s Data:%s}, want {ID:retry1 Data:%s}",
+			gotJob.ID, gotJob.Data, expectedData)
 	}
 }
