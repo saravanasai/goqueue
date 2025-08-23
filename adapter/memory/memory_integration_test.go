@@ -152,3 +152,61 @@ func TestMemoryIntegrationPushBatchWithDelay(t *testing.T) {
 		t.Fatalf("Ack2 after batch delay failed: %v", err)
 	}
 }
+
+func TestMemoryIntegrationRetryJobWithMetadata(t *testing.T) {
+	store := setupMemoryStore(t)
+	q := "integration_q_retry_metadata"
+
+	// Original job
+	originalJob := &TestJob{ID: "retry1", Data: "original"}
+	if err := store.Push(q, originalJob); err != nil {
+		t.Fatalf("Initial Push failed: %v", err)
+	}
+
+	// Pop the job
+	jc, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop failed: %v", err)
+	}
+	if jc.Job == nil {
+		t.Fatal("expected job from Pop, got nil")
+	}
+
+	// Create a modified job for retry
+	retryJob := &TestJob{ID: "retry1", Data: "modified-for-retry"}
+	retryDelay := 2 * time.Second
+
+	// Retry with metadata and delay
+	if err := store.RetryJobWithMetadata(q, retryJob, retryDelay); err != nil {
+		t.Fatalf("RetryJobWithMetadata failed: %v", err)
+	}
+
+	// Should not be able to pop immediately due to delay
+	_, err = store.Pop(q)
+	if err == nil {
+		t.Fatalf("expected no job available immediately after retry with delay")
+	}
+
+	// Wait for the delay to pass
+	time.Sleep(retryDelay + 100*time.Millisecond)
+
+	// Now should be able to pop the retried job
+	retryJc, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop after retry delay failed: %v", err)
+	}
+
+	// Verify the retried job
+	gotRetryJob, ok := retryJc.Job.(*TestJob)
+	if !ok {
+		t.Fatalf("expected *TestJob for retry, got %T", retryJc.Job)
+	}
+	if gotRetryJob.ID != "retry1" || gotRetryJob.Data != "modified-for-retry" {
+		t.Fatalf("retry job data mismatch: got=%+v, want={ID:retry1 Data:modified-for-retry}", gotRetryJob)
+	}
+
+	// Ack the retried job
+	if err := store.Ack(q, retryJc.JobID); err != nil {
+		t.Fatalf("Ack for retry job failed: %v", err)
+	}
+}
