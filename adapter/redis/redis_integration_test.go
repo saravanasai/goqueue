@@ -2,6 +2,8 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -126,4 +128,82 @@ func TestRedisIntegrationIsHealthy(t *testing.T) {
 	if !store.IsHealthy() {
 		t.Fatalf("expected IsHealthy true")
 	}
+}
+
+func TestRedisIntegrationRetryJobWithMetadata(t *testing.T) {
+	miniRedis, client := setupTestRedis(t)
+	defer miniRedis.Close()
+
+	testLogger := logger.NewZapLogger()
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
+
+	ensureIntegrationJobRegistered()
+
+	// Test setup
+	q := "integration_redis_retry"
+	originalJob := &IntegrationTestJob{ID: "retry1", Data: "original"}
+
+	// Push and pop the original job
+	if err := store.Push(q, originalJob); err != nil {
+		t.Fatalf("Initial Push failed: %v", err)
+	}
+
+	jc, err := store.Pop(q)
+	if err != nil || jc.Job == nil {
+		t.Fatalf("Pop failed: %v", err)
+	}
+
+	// Get job for retry
+	ctx := context.Background()
+	indexKey := fmt.Sprintf(JobIndexKeyFormat, q)
+	payload, err := client.HGet(ctx, indexKey, jc.JobID).Result()
+	if err != nil {
+		t.Fatalf("Failed to get job from index: %v", err)
+	}
+
+	// Prepare job for retry with modified data
+	var redisJob job.RedisQueuedJob
+	json.Unmarshal([]byte(payload), &redisJob)
+
+	modifiedJob := &IntegrationTestJob{ID: "retry1", Data: "modified-for-retry"}
+	jobBytes, _ := json.Marshal(modifiedJob)
+	redisJob.Job = jobBytes
+
+	// Retry with delay
+	retryDelay := 2 * time.Second
+	if err := store.RetryJobWithMetadata(q, redisJob, retryDelay); err != nil {
+		t.Fatalf("RetryJobWithMetadata failed: %v", err)
+	}
+
+	// Verify retry queue entry
+	retryQueueName := "retry:" + q
+	retryMembers, err := client.ZRange(ctx, retryQueueName, 0, -1).Result()
+	if err != nil || len(retryMembers) == 0 {
+		t.Fatalf("Job not found in retry queue: %v", err)
+	}
+
+	var retryJobInfo job.RedisQueuedJob
+	json.Unmarshal([]byte(retryMembers[0]), &retryJobInfo)
+	if retryJobInfo.RetryCount != 1 {
+		t.Fatalf("Expected retry count to be 1, got %d", retryJobInfo.RetryCount)
+	}
+
+	// Wait for retry poller
+	time.Sleep(retryDelay + 1*time.Second)
+
+	// Verify retried job
+	retryJc, err := store.Pop(q)
+	if err != nil {
+		t.Fatalf("Pop after retry delay failed: %v", err)
+	}
+
+	gotRetryJob, _ := retryJc.Job.(*IntegrationTestJob)
+	if gotRetryJob.Data != "modified-for-retry" || retryJc.RetryCount != 1 {
+		t.Fatalf("Retry job mismatch: data=%s, retryCount=%d",
+			gotRetryJob.Data, retryJc.RetryCount)
+	}
+
+	store.Ack(q, retryJc.JobID)
 }
