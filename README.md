@@ -51,7 +51,7 @@ Here are some popular alternatives and related frameworks for job queues and bac
 | AWS SQS Support      | ✅      | ❌    | ❌    | ❌       | ❌   | ❌        | ❌             |
 | Non-blocking Retries | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
 | UI/CLI Tools         | ⚠️      | ✅    | ❌    | ✅       | ❌   | ❌        | ⚠️             |
-| Scheduling           | ⚠️      | ✅    | ⚠️    | ✅       | ❌   | ⚠️        | ⚠️             |
+| Scheduling           | ✅      | ✅    | ⚠️    | ✅       | ❌   | ⚠️        | ⚠️             |
 | SQL/Transactional    | ⚠️      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
 
 ## Installation
@@ -180,6 +180,20 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 ```
 
 ## Advanced Features
+
+### Delayed Jobs
+
+You can schedule jobs to run in the future using `DispatchWithDelay`:
+
+```go
+// Schedule a job to run 5 minutes from now
+delay := 5 * time.Minute
+if err := q.DispatchWithDelay(job, delay); err != nil {
+    log.Printf("Failed to schedule job: %v", err)
+}
+```
+
+> **Note**: When using the Amazon SQS driver, the maximum supported delay is 15 minutes.
 
 ### Job Middleware
 
