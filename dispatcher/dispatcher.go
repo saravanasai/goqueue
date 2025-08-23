@@ -46,6 +46,7 @@ func (ds *Dispatcher) DispatchBatchWithDelay(queueName string, jobs []job.Job, d
 	ds.recordEnqueueN(len(jobs))
 	return err
 }
+
 // recordEnqueueN records n enqueue events in statsCollector if enabled.
 func (ds *Dispatcher) recordEnqueueN(n int) {
 	if ds.statsCollector != nil {
