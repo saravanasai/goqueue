@@ -166,15 +166,12 @@ func (store *InMemoryStore) Ack(queueName string, payload string) error {
 }
 
 func (store *InMemoryStore) Retry(j job.Job, delay time.Duration) error {
-	if j == nil {
-		return fmt.Errorf("job is nil")
-	}
-	qname := utils.GetJobName(j)
-	if qname == "" {
-		qname = "default"
-	}
 
-	_ = store.Push(qname, j, delay)
+	return nil
+}
+
+func (store *InMemoryStore) RetryJobWithMetadata(queueName string, job job.Job, delay ...time.Duration) error {
+	_ = store.Push(queueName, job, delay...)
 	return nil
 }
 

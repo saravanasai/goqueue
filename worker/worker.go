@@ -321,8 +321,8 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 
 			// Fallback to blocking retry (for memory driver or if driver-specific retry failed)
 			w.logger.Info("Using fallback blocking retry", "workerID", workerID, "jobID", job.JobID, "delay", delay)
-			time.Sleep(delay)
-			if err := w.store.Retry(job.Job, delay); err != nil {
+
+			if err := w.store.RetryJobWithMetadata(w.queueName, job.Job, delay); err != nil {
 				w.logger.Error("Fallback retry failed", "workerID", workerID, "jobID", job.JobID, "error", err)
 			}
 		}

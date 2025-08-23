@@ -15,6 +15,7 @@ type Store interface {
 	Pop(queueName string) (job.JobContext, error)
 	Ack(queueName string, payload string) error
 	Retry(job job.Job, delay time.Duration) error
+	RetryJobWithMetadata(queueName string, job job.Job, delay ...time.Duration) error
 	EnqueueMetrics(metrics config.JobMetrics) error
 	DequeueMetrics(queueName string) (config.JobMetrics, error)
 	IsHealthy() bool
