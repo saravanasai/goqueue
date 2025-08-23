@@ -170,8 +170,39 @@ func (store *InMemoryStore) Retry(j job.Job, delay time.Duration) error {
 	return nil
 }
 
-func (store *InMemoryStore) RetryJobWithMetadata(queueName string, job job.Job, delay ...time.Duration) error {
-	_ = store.Push(queueName, job, delay...)
+func (store *InMemoryStore) RetryJobWithMetadata(queueName string, rJob job.JobContext, delay ...time.Duration) error {
+	store.mu.Lock()
+	store.ensureQueueInitialized(queueName)
+	q := store.Queue[queueName]
+	store.mu.Unlock()
+
+	// Increment retry count
+	rJob.RetryCount += 1
+
+	// Calculate enqueue time with delay
+	enqueueAt := time.Now()
+	if len(delay) > 0 && delay[0] > 0 {
+		enqueueAt = enqueueAt.Add(delay[0])
+	}
+
+	// Create queued job with the same ID
+	meta := job.QueuedJob{
+		Job:        rJob.Job,
+		ID:         rJob.JobID, // Keep the same job ID
+		EnqueuedAt: enqueueAt,
+		RetryCount: rJob.RetryCount,
+	}
+
+	sj := &scheduledJob{QueuedJob: meta, EnqueueAt: enqueueAt}
+
+	q.mu.Lock()
+	q.jobs = append(q.jobs, sj)
+	// Sort jobs by EnqueueAt ascending
+	sort.Slice(q.jobs, func(i, j int) bool {
+		return q.jobs[i].EnqueueAt.Before(q.jobs[j].EnqueueAt)
+	})
+	q.mu.Unlock()
+
 	return nil
 }
 

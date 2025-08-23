@@ -246,7 +246,7 @@ func (rs *RedisStore) Retry(job job.Job, delay time.Duration) error {
 }
 
 // RetryJobWithMetadata pushes a job to the retry queue with retry metadata
-func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob job.JobContext, delay time.Duration) error {
+func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob job.JobContext, delay ...time.Duration) error {
 
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {
 		rs.logger.Error("redis instance is currently unhealthy, cannot retry job", "queue", queueName)
@@ -255,7 +255,7 @@ func (rs *RedisStore) RetryJobWithMetadata(queueName string, queuedJob job.JobCo
 
 	ctx := context.Background()
 	retryQueueName := retryQueuePrefix + queueName
-	retryTimestamp := time.Now().Add(delay).Unix()
+	retryTimestamp := time.Now().Add(delay[0]).Unix()
 
 	// Get job name and serialize the original job
 	jobName := utils.GetJobName(queuedJob.Job)

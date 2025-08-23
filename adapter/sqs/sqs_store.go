@@ -586,22 +586,14 @@ func (s *SQSStore) Retry(job job.Job, delay time.Duration) error {
 
 // RetryJobWithMetadata handles job retries using SQS ChangeMessageVisibility
 // This provides the same retry behavior as the Redis driver using SQS's native visibility timeout
-func (s *SQSStore) RetryJobWithMetadata(queueName string, queuedJob interface{}, delay time.Duration) error {
+func (s *SQSStore) RetryJobWithMetadata(queueName string, queuedJob job.JobContext, delay ...time.Duration) error {
 	var sqsJob SQSQueuedJob
 	var err error
 
-	// Handle both SQSQueuedJob and JobContext types
-	switch v := queuedJob.(type) {
-	case SQSQueuedJob:
-		sqsJob = v
-	case job.JobContext:
-		// Create SQSQueuedJob from JobContext
-		sqsJob, err = s.createSQSQueuedJob(v, v.RetryCount+1)
-		if err != nil {
-			return fmt.Errorf("failed to create SQS job for retry: %w", err)
-		}
-	default:
-		return fmt.Errorf("invalid job type for SQS retry, expected SQSQueuedJob or JobContext")
+	// Create SQSQueuedJob from JobContext
+	sqsJob, err = s.createSQSQueuedJob(queuedJob, queuedJob.RetryCount+1)
+	if err != nil {
+		return fmt.Errorf("failed to create SQS job for retry: %w", err)
 	}
 
 	// Check if receipt handle is available
@@ -612,19 +604,19 @@ func (s *SQSStore) RetryJobWithMetadata(queueName string, queuedJob interface{},
 	// Calculate visibility timeout from delay
 	// SQS supports visibility timeout up to 12 hours (43200 seconds)
 	maxSQSVisibilityTimeout := 12 * time.Hour
-	if delay > maxSQSVisibilityTimeout {
+	if delay[0] > maxSQSVisibilityTimeout {
 		s.logger.Error("Retry delay exceeds SQS maximum visibility timeout",
 			"delay", delay,
 			"maxTimeout", maxSQSVisibilityTimeout,
 			"jobID", sqsJob.ID)
-		delay = maxSQSVisibilityTimeout
+		delay[0] = maxSQSVisibilityTimeout
 	}
 
 	// Change the message visibility timeout to implement retry delay
 	_, err = s.client.ChangeMessageVisibility(context.Background(), &sqs.ChangeMessageVisibilityInput{
 		QueueUrl:          aws.String(s.getQueueURL(queueName)),
 		ReceiptHandle:     aws.String(sqsJob.ReceiptHandle),
-		VisibilityTimeout: int32(delay.Seconds()),
+		VisibilityTimeout: int32(delay[0].Seconds()),
 	})
 
 	if err != nil {

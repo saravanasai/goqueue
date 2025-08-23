@@ -176,8 +176,11 @@ func TestMemoryIntegrationRetryJobWithMetadata(t *testing.T) {
 	retryJob := &TestJob{ID: "retry1", Data: "modified-for-retry"}
 	retryDelay := 2 * time.Second
 
+	// Update the job in the JobContext
+	jc.Job = retryJob
+
 	// Retry with metadata and delay
-	if err := store.RetryJobWithMetadata(q, retryJob, retryDelay); err != nil {
+	if err := store.RetryJobWithMetadata(q, jc, retryDelay); err != nil {
 		t.Fatalf("RetryJobWithMetadata failed: %v", err)
 	}
 
