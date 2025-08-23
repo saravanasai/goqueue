@@ -191,6 +191,154 @@ func TestSQSIntegrationIsHealthy(t *testing.T) {
 	}
 }
 
+func TestSQSIntegrationPushWithDelay(t *testing.T) {
+	// Define constants for the test
+	const (
+		testQueue    = "delay-test-queue"
+		delayJobID   = "delay-job"
+		delayJobData = "delayed data"
+	)
+
+	// Setup test environment and mocks
+	sqsCfg, cfg := makeSQSConfig()
+	mock, makeMessagesAvailable := setupDelayTestMocks()
+	store := NewSQSStoreWithClient(mock, sqsCfg, cfg, logger.NewZapLogger())
+	ensureSQSIntegrationRegistered()
+
+	// Test standard delay
+	testDelay := 5 * time.Second
+	verifyPushDelay(t, store, mock, testQueue, testDelay)
+
+	// Test over-maximum delay (should be capped)
+	maxDelay := 15 * time.Minute
+	verifyPushDelay(t, store, mock, testQueue, maxDelay+time.Hour)
+
+	// Test job delivery with delays
+	verifyJobDelayedDelivery(t, store, testQueue, delayJobID, delayJobData, makeMessagesAvailable)
+}
+
+// setupDelayTestMocks creates and configures mock SQS client for delay tests
+func setupDelayTestMocks() (*intMockSQSClient, func()) {
+	mock := &intMockSQSClient{}
+
+	// Mock SendMessage to capture delay value
+	mock.SendMessageFunc = func(ctx context.Context, params *sqs.SendMessageInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageOutput, error) {
+		return &sqs.SendMessageOutput{}, nil
+	}
+
+	// Setup for message delivery testing
+	messageAvailable := false
+
+	// Create a delayed job message
+	const (
+		delayJobID   = "delay-job"
+		delayJobData = "delayed data"
+	)
+	inner := &SQSIntegrationJob{ID: delayJobID, Data: delayJobData}
+	innerBytes, _ := json.Marshal(inner)
+	sqsJob := SQSQueuedJob{
+		Job:        innerBytes,
+		ID:         utils.GenerateID(),
+		JobName:    "SQSIntegrationJob",
+		EnqueuedAt: time.Now(),
+	}
+	body, _ := json.Marshal(sqsJob)
+	delayedMessage := types.Message{
+		Body:          awsString(string(body)),
+		ReceiptHandle: awsString("rh-delay"),
+		MessageAttributes: map[string]types.MessageAttributeValue{
+			attrJobID: {StringValue: awsString(sqsJob.ID), DataType: awsString("String")},
+		},
+	}
+
+	// Mock ReceiveMessage to control message delivery based on delay
+	mock.ReceiveMessageFunc = func(ctx context.Context, params *sqs.ReceiveMessageInput, optFns ...func(*sqs.Options)) (*sqs.ReceiveMessageOutput, error) {
+		if messageAvailable {
+			return &sqs.ReceiveMessageOutput{Messages: []types.Message{delayedMessage}}, nil
+		}
+		return &sqs.ReceiveMessageOutput{Messages: []types.Message{}}, nil
+	}
+
+	// Function to make messages available (simulating delay completion)
+	makeAvailable := func() {
+		messageAvailable = true
+	}
+
+	return mock, makeAvailable
+}
+
+// verifyPushDelay tests that a specific delay is correctly passed to SQS
+func verifyPushDelay(t *testing.T, store *SQSStore, mock *intMockSQSClient, queueName string, testDelay time.Duration) {
+	t.Helper()
+
+	// Capture the actual delay sent to SQS
+	var capturedDelay int32
+	originalSendFunc := mock.SendMessageFunc
+
+	mock.SendMessageFunc = func(ctx context.Context, params *sqs.SendMessageInput, optFns ...func(*sqs.Options)) (*sqs.SendMessageOutput, error) {
+		capturedDelay = params.DelaySeconds
+		return originalSendFunc(ctx, params, optFns...)
+	}
+
+	// Push job with specified delay
+	job := &SQSIntegrationJob{ID: "test-job", Data: "test data"}
+	if err := store.Push(queueName, job, testDelay); err != nil {
+		t.Fatalf("Push with delay failed: %v", err)
+	}
+
+	// Calculate expected delay (capped at 15 minutes)
+	var expectedDelay int32
+	maxDelaySecs := int32((15 * time.Minute).Seconds())
+	delaySecs := int32(testDelay.Seconds())
+
+	if delaySecs > maxDelaySecs {
+		expectedDelay = maxDelaySecs
+	} else {
+		expectedDelay = delaySecs
+	}
+
+	// Verify the delay was correctly set
+	if capturedDelay != expectedDelay {
+		t.Fatalf("Expected delay of %d seconds, but got %d seconds", expectedDelay, capturedDelay)
+	}
+}
+
+// verifyJobDelayedDelivery tests that a job is correctly delivered after its delay
+func verifyJobDelayedDelivery(t *testing.T, store *SQSStore, queueName, expectedJobID, expectedJobData string, makeAvailable func()) {
+	t.Helper()
+
+	// First attempt to pop should return nothing (simulating job is still delayed)
+	jc1, err := store.Pop(queueName)
+	if err != nil {
+		t.Fatalf("Pop failed during delay: %v", err)
+	}
+	if jc1.Job != nil {
+		t.Fatalf("Expected no job available during delay period, but got one")
+	}
+
+	// Now simulate delay completion
+	makeAvailable()
+
+	// Next pop should return the job (delay has expired)
+	jc2, err := store.Pop(queueName)
+	if err != nil {
+		t.Fatalf("Pop after delay failed: %v", err)
+	}
+	if jc2.Job == nil {
+		t.Fatalf("Expected job after delay, but got nil")
+	}
+
+	// Verify it's the correct job with expected data
+	gotJob, ok := jc2.Job.(*SQSIntegrationJob)
+	if !ok {
+		t.Fatalf("Expected *SQSIntegrationJob, got %T", jc2.Job)
+	}
+	if gotJob.ID != expectedJobID || gotJob.Data != expectedJobData {
+		t.Fatalf("Job data mismatch: got=%+v, want={ID:%s Data:%s}",
+			gotJob, expectedJobID, expectedJobData)
+	}
+}
+
 func TestSQSIntegrationRetryJobWithMetadata(t *testing.T) {
 	// Test constants
 	const (
