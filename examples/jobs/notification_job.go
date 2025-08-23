@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"github.com/saravanasai/goqueue"
 )
 
 // NotificationJob demonstrates a job that can be delayed
@@ -23,11 +21,4 @@ func (n *NotificationJob) Process(ctx context.Context) error {
 		n.Message,
 		n.ScheduledAt.Format(time.RFC3339))
 	return nil
-}
-
-func init() {
-	// Register the NotificationJob type for serialization
-	goqueue.RegisterJob("NotificationJob", func() goqueue.Job {
-		return &NotificationJob{}
-	})
 }
