@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/saravanasai/goqueue/adapter"
+	"github.com/saravanasai/goqueue/adapter/database"
 	"github.com/saravanasai/goqueue/adapter/memory"
 	"github.com/saravanasai/goqueue/adapter/redis"
 	"github.com/saravanasai/goqueue/adapter/sqs"
@@ -77,6 +78,20 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 	case config.DriverSQS:
 		var err error
 		store, err = sqs.NewSQSStore(cfg, logger)
+		if err != nil {
+			logger.Error("Failed to initialize SQS store", "error", err)
+			queueCancel()
+			return nil, fmt.Errorf("failed to initialize SQS store: %w", err)
+		}
+	case config.DriverDatabase:
+		var err error
+		dbCfg, ok := cfg.DriverConfig.(config.DatabaseConfig)
+		if !ok {
+			logger.Error("Invalid Database config provided")
+			queueCancel()
+			return nil, fmt.Errorf("invalid Database config provided")
+		}
+		store, err = database.NewDatabaseStore(dbCfg, logger, cfg)
 		if err != nil {
 			logger.Error("Failed to initialize SQS store", "error", err)
 			queueCancel()
