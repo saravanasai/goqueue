@@ -16,7 +16,7 @@ GoQueue is a flexible background job processing library for Go applications, des
 
 ## Features
 
-- **Multiple Backends**: In-memory (development), Redis (production), AWS SQS (cloud)
+- **Multiple Backends**: In-memory (development), Redis (production), PostgreSQL/MySQL , AWS SQS (cloud)
 - **Job Management**: automatic retries with backoff, Dead Letter Queue
 - **Concurrency Control**: Configurable worker pools, graceful shutdown
 - **Observability**: Metrics collection, logging support
@@ -52,7 +52,7 @@ Here are some popular alternatives and related frameworks for job queues and bac
 | Non-blocking Retries | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
 | UI/CLI Tools         | ⚠️      | ✅    | ❌    | ✅       | ❌   | ❌        | ⚠️             |
 | Scheduling           | ✅      | ✅    | ⚠️    | ✅       | ❌   | ⚠️        | ⚠️             |
-| SQL/Transactional    | ⚠️      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
+| SQL/Transactional    | ✅      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
 
 ## Installation
 
@@ -125,12 +125,62 @@ func main() {
 }
 ```
 
+## Database Driver Setup
+
+GoQueue supports database backends for teams that prefer SQL-based persistence and transactional guarantees. Both PostgreSQL and MySQL are supported.
+
+```go
+package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/saravanasai/goqueue"
+    "github.com/saravanasai/goqueue/config"
+)
+
+func main() {
+    // Create a queue with PostgreSQL backend
+    cfg := config.NewPostgresConfig("postgresql://user:password@localhost:5432/dbname")
+
+    // Configure metrics callback (optional)
+    cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
+        fmt.Printf("Job: %s, Queue: %s, Duration: %v, Error: %v\n",
+            metrics.JobID, metrics.QueueName, metrics.Duration, metrics.Error)
+    })
+
+    // Create the queue
+    q, err := goqueue.NewQueueWithDefaults("emails", cfg)
+    if err != nil {
+        log.Fatalf("Failed to create queue: %v", err)
+    }
+
+    // Dispatch jobs and start workers as normal...
+}
+```
+
+The database driver automatically handles creating tables and managing failed jobs through a Dead Letter Queue (DLQ).
+
 ## Backend Options
 
 ### In-Memory (Development)
 
 ```go
 cfg := config.NewInMemoryConfig()
+queue, err := goqueue.NewQueueWithDefaults("emails", cfg)
+```
+
+### PostgreSQL/MySQL (Transactional)
+
+```go
+// PostgreSQL
+cfg := config.NewPostgresConfig("postgresql://user:password@localhost:5432/dbname")
+queue, err := goqueue.NewQueueWithDefaults("emails", cfg)
+
+// MySQL
+cfg := config.NewMySQLConfig("root:password@tcp(localhost:3306)/dbname")
 queue, err := goqueue.NewQueueWithDefaults("emails", cfg)
 ```
 
@@ -276,4 +326,4 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 
 Upcoming features planned for GoQueue:
 
-- **Postgres Driver**: SQL-backed queue for teams preferring transactional guarantees.
+- **MySQL Driver**: Additional SQL backend option.
