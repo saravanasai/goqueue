@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/saravanasai/goqueue/adapter"
-	"github.com/saravanasai/goqueue/config"
-
 	configuration "github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/internal/stats"
@@ -196,7 +194,7 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 				w.logger.Error("Failed to push job to DLQ", "jobID", job.JobID, "error", dlqErr)
 			}
 		} else {
-			w.logger.Info("No DLQ configured, discarding failed job", "jobID", job.JobID)
+			w.logger.Error("No DLQ configured, discarding failed job", "jobID", job.JobID)
 		}
 
 		// Acknowledge the job to remove it from processing
@@ -248,7 +246,7 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 			} else {
 				w.logger.Info("Completed job", "workerID", workerID, "jobID", job.JobID, "duration", processingTime)
 				if w.config.OnJobComplete != nil {
-					metrics := config.JobMetrics{
+					metrics := configuration.JobMetrics{
 						QueueName: w.queueName,
 						JobID:     job.JobID,
 						Duration:  processingTime,
@@ -276,7 +274,7 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 				delay = retryDelay * time.Duration(1<<uint(job.RetryCount))
 			}
 
-			w.logger.Info("Using fallback blocking retry", "workerID", workerID, "jobID", job.JobID, "delay", delay)
+			w.logger.Error("Using fallback blocking retry", "workerID", workerID, "jobID", job.JobID, "delay", delay)
 
 			if err := w.store.RetryJobWithMetadata(w.queueName, job, delay); err != nil {
 				w.logger.Error("Fallback retry failed", "workerID", workerID, "jobID", job.JobID, "error", err)
@@ -293,12 +291,12 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 			w.logger.Error("Failed to push job to DLQ", "jobID", job.JobID, "error", dlqErr)
 		}
 	} else {
-		w.logger.Info("No DLQ configured, discarding failed job", "jobID", job.JobID)
+		w.logger.Error("No DLQ configured, discarding failed job", "jobID", job.JobID)
 	}
 
 	// Record metrics if enabled
 	if w.config.OnJobComplete != nil {
-		metrics := config.JobMetrics{
+		metrics := configuration.JobMetrics{
 			QueueName: w.queueName,
 			JobID:     job.JobID,
 			Duration:  0,
@@ -311,7 +309,7 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 
 // enqueueMetrics adds job completion metrics to the metrics channel.
 // If the channel is full, the metrics are dropped and an error is logged.
-func (w *Worker) enqueueMetrics(metrics config.JobMetrics) {
+func (w *Worker) enqueueMetrics(metrics configuration.JobMetrics) {
 	select {
 	case w.metricsChannel <- metrics:
 	default:
@@ -335,8 +333,7 @@ func (w *Worker) startMetricsWorker(ctx context.Context) {
 				}
 			default:
 				jobCtx, err := w.store.DequeueMetrics(w.queueName)
-				if (err == nil && jobCtx != config.JobMetrics{}) {
-					w.logger.Info("Metrics worker processing job: inside", "jobID", jobCtx.JobID)
+				if (err == nil && jobCtx != configuration.JobMetrics{}) {
 					w.config.OnJobComplete(jobCtx)
 				}
 			}
@@ -380,7 +377,7 @@ func (w *Worker) Shutdown(ctx context.Context) error {
 
 // calculateMetricsBufferSize determines the appropriate size for the metrics channel buffer
 // based on the worker configuration, ensuring it stays within reasonable bounds.
-func calculateMetricsBufferSize(config config.Config) int {
+func calculateMetricsBufferSize(config configuration.Config) int {
 	// Constants for buffer size calculation
 	const (
 		baseBufferSize  = 100   // Minimum base buffer size
