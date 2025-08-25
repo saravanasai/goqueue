@@ -76,6 +76,10 @@ func NewRedisStore(client *redis.Client, config config.Config, redisManager *man
 	return rs
 }
 
+func (rs *RedisStore) GetDbConnection() interface{} {
+	return rs.client
+}
+
 // Push supports optional delay. If delay is provided, job is scheduled in retry ZSET.
 func (rs *RedisStore) Push(queueName string, jb job.Job, delay ...time.Duration) error {
 	if rs.redisManager != nil && !rs.redisManager.IsHealthy(rs.redisKey) {

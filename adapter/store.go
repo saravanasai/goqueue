@@ -10,6 +10,7 @@ import (
 type Store interface {
 	// Push adds a single job to the queue.
 	Push(queueName string, job job.Job, time ...time.Duration) error
+	GetDbConnection() interface{}
 	// PushBatch adds multiple jobs to the queue in a single call.
 	PushBatch(queueName string, jobs []job.Job, time ...time.Duration) error
 	Pop(queueName string) (job.JobContext, error)

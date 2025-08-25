@@ -22,6 +22,11 @@ const (
 	DriverDatabase = "database"
 )
 
+const (
+	DatabaseTypePostgres = "postgres"
+	DatabaseTypeMySQL    = "mysql"
+)
+
 // DriverConfig defines the interface that all driver-specific configurations must implement.
 type DriverConfig interface {
 	// Type returns the driver type identifier (e.g., "redis", "memory")
@@ -118,6 +123,24 @@ type SQSConfig struct {
 // Type implements the DriverConfig interface.
 func (s SQSConfig) Type() string {
 	return "sqs"
+}
+
+type DatabaseConfig struct {
+	ConnectionString string
+	DatabaseType     string // "postgres", "mysql".
+
+	// Migration options
+	AutoMigrate     bool
+	MigrationsTable string
+
+	// Connection pool settings
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+func (c DatabaseConfig) Type() string {
+	return DriverDatabase
 }
 
 // sensibleDefaultMaxWorkers returns a reasonable default for MaxWorkers
@@ -253,6 +276,28 @@ func NewSQSFifoConfig(queueURL, region, accessKeyID, secretAccessKey, messageGro
 			IsFifo:            true,
 			MessageGroupID:    messageGroupID,
 		},
+		MaxWorkers:         sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:      nil,
+		MaxRetryAttempts:   3,
+		RetryDelay:         2 * time.Second,
+		ExponentialBackoff: false,
+	}
+}
+
+func NewPostgresConfig(connectionString string) Config {
+	dbConfig := DatabaseConfig{
+		ConnectionString: connectionString,
+		DatabaseType:     DatabaseTypePostgres,
+		AutoMigrate:      true,
+		MigrationsTable:  "goqueue_migrations",
+		MaxOpenConns:     10,
+		MaxIdleConns:     5,
+		ConnMaxLifetime:  5 * time.Minute,
+	}
+	return Config{
+		Driver:             DriverDatabase,
+		DriverConfig:       dbConfig,
 		MaxWorkers:         sensibleDefaultMaxWorkers(),
 		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
 		OnJobComplete:      nil,
@@ -462,6 +507,8 @@ func (c Config) Validate(logger logger.Logger) error {
 	case DriverMemory:
 		return nil
 	case DriverRedis:
+		return nil
+	case DriverDatabase:
 		return nil
 	case DriverSQS:
 		// Add SQS-specific validations

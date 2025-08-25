@@ -196,6 +196,10 @@ func (s *SQSStore) createSQSQueuedJob(jobCtx job.JobContext, retryCount int) (SQ
 	}, nil
 }
 
+func (s *SQSStore) GetDbConnection() interface{} {
+	return nil
+}
+
 // Push adds a single job to the queue, with optional delay
 func (s *SQSStore) Push(queueName string, jb job.Job, delay ...time.Duration) error {
 	// Get job name from type

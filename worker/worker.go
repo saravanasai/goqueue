@@ -12,6 +12,7 @@ import (
 
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/config"
+
 	configuration "github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/internal/stats"
@@ -73,9 +74,10 @@ func NewWorker(store adapter.Store, config configuration.Config, queueName strin
 // of workers exceeds the configured maximum.
 func (w *Worker) Start(ctx context.Context, noOfWorkers int) error {
 	supportedDrivers := map[string]bool{
-		configuration.DriverMemory: true,
-		configuration.DriverRedis:  true,
-		configuration.DriverSQS:    true,
+		configuration.DriverMemory:   true,
+		configuration.DriverRedis:    true,
+		configuration.DriverSQS:      true,
+		configuration.DriverDatabase: true,
 	}
 
 	if !supportedDrivers[w.config.Driver] {
@@ -141,12 +143,10 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 
 		// Validate job
 		if job.Job == nil {
-			w.logger.Error("Received nil job, skipping", "workerID", workerID, "jobID", job.JobID)
 			continue
 		}
 
 		// Process the job
-		w.logger.Info("Processing job", "workerID", workerID, "jobID", job.JobID, "jobType", fmt.Sprintf("%T", job.Job))
 		w.processJobSafely(ctx, workerID, job)
 	}
 }
