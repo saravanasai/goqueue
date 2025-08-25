@@ -28,6 +28,18 @@ func NewMySQLDLQ(db *sql.DB, logger logger.Logger) *MySQLDLQ {
 
 // Push adds a failed job to the dead letter queue
 func (m *MySQLDLQ) Push(ctx context.Context, job *job.JobContext, err error) error {
+	// Start a transaction to ensure atomicity
+	tx, err2 := m.db.BeginTx(ctx, nil)
+	if err2 != nil {
+		m.logger.Error("Failed to begin transaction for DLQ", "error", err2)
+		return fmt.Errorf("failed to begin transaction for DLQ: %w", err2)
+	}
+	defer func() {
+		if err2 != nil {
+			tx.Rollback()
+		}
+	}()
+
 	// Generate an ID for the record
 	id, err2 := uuid.NewRandom()
 	if err2 != nil {
@@ -50,7 +62,7 @@ func (m *MySQLDLQ) Push(ctx context.Context, job *job.JobContext, err error) err
 	}
 
 	// Insert into failed_jobs table - MySQL uses ? as placeholders
-	query := `
+	insertQuery := `
         INSERT INTO failed_jobs (
             id, uuid, queue_name, job_name, payload, exception, attempts, error
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,9 +73,9 @@ func (m *MySQLDLQ) Push(ctx context.Context, job *job.JobContext, err error) err
 		errorMsg = err.Error()
 	}
 
-	_, err2 = m.db.ExecContext(
+	_, err2 = tx.ExecContext(
 		ctx,
-		query,
+		insertQuery,
 		id.String(),
 		job.JobID,
 		job.QueueName,
@@ -77,6 +89,24 @@ func (m *MySQLDLQ) Push(ctx context.Context, job *job.JobContext, err error) err
 	if err2 != nil {
 		m.logger.Error("Failed to insert job into DLQ", "error", err2)
 		return fmt.Errorf("failed to insert job into DLQ: %w", err2)
+	}
+
+	// Now delete the job from the jobs table
+	deleteQuery := `
+        DELETE FROM jobs
+        WHERE id = ?
+    `
+
+	_, err2 = tx.ExecContext(ctx, deleteQuery, job.JobID)
+	if err2 != nil {
+		m.logger.Error("Failed to delete job after moving to DLQ", "error", err2, "jobID", job.JobID)
+		return fmt.Errorf("failed to delete job after moving to DLQ: %w", err2)
+	}
+
+	// Commit the transaction
+	if err2 = tx.Commit(); err2 != nil {
+		m.logger.Error("Failed to commit transaction for DLQ", "error", err2)
+		return fmt.Errorf("failed to commit transaction for DLQ: %w", err2)
 	}
 
 	return nil

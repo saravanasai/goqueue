@@ -3,6 +3,7 @@ package redis
 import _ "embed"
 
 // Embedded Lua scripts for Redis operations.
+//
 //go:embed scripts/move_retry.lua
 var moveRetryJobScript string
 
