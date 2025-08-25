@@ -327,3 +327,4 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 Upcoming features planned for GoQueue:
 
 - **MySQL Driver**: Additional SQL backend option.
+  .
