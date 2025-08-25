@@ -68,7 +68,6 @@ func GetMigrations() []Migration {
                     exception TEXT NOT NULL,
                     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                     failed_at TIMESTAMP NOT NULL DEFAULT NOW(),
-                    attempts INT NOT NULL DEFAULT 0,
                     error TEXT
                 )`,
 				"mysql": `CREATE TABLE failed_jobs (
@@ -80,7 +79,6 @@ func GetMigrations() []Migration {
                     exception TEXT NOT NULL,
                     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     failed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    attempts INT NOT NULL DEFAULT 0,
                     error TEXT
                 )`,
 			},
