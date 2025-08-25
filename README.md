@@ -230,11 +230,7 @@ cfg = cfg.WithMiddlewares(loggingMiddleware, skipCondition, rateLimiter)
 When jobs fail repeatedly after exhausting retry attempts, they can be sent to a Dead Letter Queue for analysis and handling.
 
 ```go
-// Option 1: Use a DLQ adapter (Redis or custom implementation)
-redisDLQ := redis_dlq.NewRedisDLQ(redisClient, "failed_jobs")
-cfg = cfg.WithDLQAdapter(redisDLQ)
-
-// Option 2: Custom handler for failed jobs
+// Custom handler for failed jobs
 type CustomDLQ struct{}
 
 func (d *CustomDLQ) Push(ctx context.Context, jobCtx *job.JobContext, err error) error {

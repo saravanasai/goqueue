@@ -18,7 +18,7 @@ import (
 )
 
 type DatabaseStore struct {
-	db     *sql.DB
+	Db     *sql.DB
 	dbType string // "postgres", "mysql".
 	logger logger.Logger
 	config config.Config
@@ -54,7 +54,7 @@ func NewDatabaseStore(cfg config.DatabaseConfig, log logger.Logger, config confi
 
 	// Create a new store instance
 	store := &DatabaseStore{
-		db:     db,
+		Db:     db,
 		dbType: cfg.DatabaseType,
 		logger: log,
 		config: config,
@@ -70,6 +70,10 @@ func NewDatabaseStore(cfg config.DatabaseConfig, log logger.Logger, config confi
 
 	log.Info("Connected to database", "type", cfg.DatabaseType)
 	return store, nil
+}
+
+func (ds *DatabaseStore) GetDbConnection() interface{} {
+	return ds.Db
 }
 
 // Push adds a single job to the queue
@@ -114,7 +118,7 @@ func (ds *DatabaseStore) Push(queueName string, job job.Job, delay ...time.Durat
 	}
 
 	// Execute the query with parameters
-	_, err = ds.db.Exec(query, jobID, queueName, jobName, jobPayload, availableAt)
+	_, err = ds.Db.Exec(query, jobID, queueName, jobName, jobPayload, availableAt)
 	if err != nil {
 		ds.logger.Error("failed to insert job into database",
 			"error", err,
@@ -139,7 +143,7 @@ func (ds *DatabaseStore) PushBatch(queueName string, jobs []job.Job, delay ...ti
 	}
 
 	// Start a transaction
-	tx, err := ds.db.Begin()
+	tx, err := ds.Db.Begin()
 	if err != nil {
 		ds.logger.Error("failed to begin transaction", "error", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
@@ -241,7 +245,7 @@ func (ds *DatabaseStore) PushBatch(queueName string, jobs []job.Job, delay ...ti
 func (ds *DatabaseStore) Pop(queueName string) (job.JobContext, error) {
 
 	// Start a transaction for atomicity
-	tx, err := ds.db.Begin()
+	tx, err := ds.Db.Begin()
 	if err != nil {
 		ds.logger.Error("failed to begin transaction", "error", err)
 		return job.JobContext{}, fmt.Errorf("failed to begin transaction: %w", err)
@@ -384,7 +388,7 @@ func (ds *DatabaseStore) Ack(queueName string, jobID string) error {
 	}
 
 	// Execute the query
-	_, err := ds.db.Exec(query, jobID, queueName)
+	_, err := ds.Db.Exec(query, jobID, queueName)
 	if err != nil {
 		ds.logger.Error("failed to acknowledge job",
 			"error", err,
@@ -404,25 +408,282 @@ func (ds *DatabaseStore) Retry(j job.Job, delay time.Duration) error {
 }
 
 // RetryJobWithMetadata adds a job with its metadata back to the queue for retry
-func (ds *DatabaseStore) RetryJobWithMetadata(queueName string, job job.JobContext, delay ...time.Duration) error {
-	// TODO: Implement real logic
+func (ds *DatabaseStore) RetryJobWithMetadata(queueName string, jobCtx job.JobContext, delay ...time.Duration) error {
+	// Start a transaction
+	tx, err := ds.Db.Begin()
+	if err != nil {
+		ds.logger.Error("failed to begin transaction for retry", "error", err)
+		return fmt.Errorf("failed to begin transaction for retry: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Serialize the job payload
+	jobName := utils.GetJobName(jobCtx.Job)
+	if jobName == "" {
+		tx.Rollback()
+		return fmt.Errorf("could not determine job name from type")
+	}
+
+	jobPayload, err := json.Marshal(jobCtx.Job)
+	if err != nil {
+		tx.Rollback()
+		ds.logger.Error("failed to marshal job for retry", "error", err, "queue", queueName)
+		return fmt.Errorf("failed to marshal job for retry: %w", err)
+	}
+
+	// Calculate the available_at timestamp based on delay
+	var availableAt time.Time
+	if len(delay) > 0 && delay[0] > 0 {
+		availableAt = time.Now().UTC().Add(delay[0])
+	} else {
+		availableAt = time.Now().UTC()
+	}
+
+	// Increment retry count
+	retryCount := jobCtx.RetryCount + 1
+
+	// Prepare the update query based on database type
+	var query string
+	switch ds.dbType {
+	case config.DatabaseTypePostgres:
+		query = `
+            UPDATE jobs
+            SET 
+                status = 'pending',
+                reserved_at = NULL,
+                available_at = $1,
+                attempts = $2,
+                payload = $3
+            WHERE id = $4 AND queue_name = $5
+        `
+	case config.DatabaseTypeMySQL:
+		query = `
+            UPDATE jobs
+            SET 
+                status = 'pending',
+                reserved_at = NULL,
+                available_at = ?,
+                attempts = ?,
+                payload = ?
+            WHERE id = ? AND queue_name = ?
+        `
+	default:
+		tx.Rollback()
+		return fmt.Errorf("unsupported database type: %s", ds.dbType)
+	}
+
+	// Execute the query
+	result, err := tx.Exec(query, availableAt, retryCount, jobPayload, jobCtx.JobID, queueName)
+	if err != nil {
+		tx.Rollback()
+		ds.logger.Error("failed to update job for retry",
+			"error", err,
+			"queue", queueName,
+			"id", jobCtx.JobID)
+		return fmt.Errorf("failed to update job for retry: %w", err)
+	}
+
+	// Check if the job was actually updated
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		tx.Rollback()
+		ds.logger.Error("failed to get affected rows",
+			"error", err,
+			"queue", queueName,
+			"id", jobCtx.JobID)
+		return fmt.Errorf("failed to get affected rows: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		tx.Rollback()
+		ds.logger.Warn("job not found for retry",
+			"queue", queueName,
+			"id", jobCtx.JobID)
+		return fmt.Errorf("job not found for retry: queue=%s, id=%s", queueName, jobCtx.JobID)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		ds.logger.Error("failed to commit transaction",
+			"error", err,
+			"queue", queueName,
+			"id", jobCtx.JobID)
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
 	return nil
 }
 
 // EnqueueMetrics adds job metrics to the metrics queue
 func (ds *DatabaseStore) EnqueueMetrics(metrics config.JobMetrics) error {
-	// TODO: Implement real logic
+	// Generate a unique ID for the metrics record
+	metricsID := utils.GenerateID()
+
+	// Convert error to string if present
+	var errorText sql.NullString
+	if metrics.Error != nil {
+		errorText.String = metrics.Error.Error()
+		errorText.Valid = true
+	}
+
+	// Convert duration to milliseconds for storage
+	durationMs := metrics.Duration.Milliseconds()
+
+	// Prepare the query based on database type
+	var query string
+	switch ds.dbType {
+	case config.DatabaseTypePostgres:
+		query = `
+            INSERT INTO job_metrics 
+            (id, job_id, queue_name, duration, error, timestamp, processed)
+            VALUES ($1, $2, $3, $4, $5, $6, false)
+        `
+	case config.DatabaseTypeMySQL:
+		query = `
+            INSERT INTO job_metrics 
+            (id, job_id, queue_name, duration, error, timestamp, processed)
+            VALUES (?, ?, ?, ?, ?, ?, false)
+        `
+	default:
+		return fmt.Errorf("unsupported database type: %s", ds.dbType)
+	}
+
+	// Execute the query
+	_, err := ds.Db.Exec(
+		query,
+		metricsID,
+		metrics.JobID,
+		metrics.QueueName,
+		durationMs,
+		errorText,
+		metrics.Timestamp,
+	)
+
+	if err != nil {
+		ds.logger.Error("failed to enqueue job metrics",
+			"error", err,
+			"job_id", metrics.JobID,
+			"queue", metrics.QueueName)
+		return fmt.Errorf("failed to enqueue job metrics: %w", err)
+	}
+
 	return nil
 }
 
-// DequeueMetrics retrieves job metrics from the metrics queue
+// DequeueMetrics retrieves job metrics from the metrics queue and then deletes them
 func (ds *DatabaseStore) DequeueMetrics(queueName string) (config.JobMetrics, error) {
-	// TODO: Implement real logic
-	return config.JobMetrics{}, nil
+	// Start a transaction for atomicity
+	tx, err := ds.Db.Begin()
+	if err != nil {
+		ds.logger.Error("failed to begin transaction for metrics", "error", err)
+		return config.JobMetrics{}, fmt.Errorf("failed to begin transaction for metrics: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Prepare the query to find a metrics record
+	var query string
+	var deleteQuery string
+
+	switch ds.dbType {
+	case config.DatabaseTypePostgres:
+		query = `
+            SELECT id, job_id, queue_name, duration, error, timestamp
+            FROM job_metrics
+            WHERE processed = false
+            AND queue_name = $1
+            ORDER BY timestamp
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+        `
+		deleteQuery = `
+            DELETE FROM job_metrics
+            WHERE id = $1
+        `
+	case config.DatabaseTypeMySQL:
+		query = `
+            SELECT id, job_id, queue_name, duration, error, timestamp
+            FROM job_metrics
+            WHERE processed = false
+            AND queue_name = ?
+            ORDER BY timestamp
+            LIMIT 1
+            FOR UPDATE
+        `
+		deleteQuery = `
+            DELETE FROM job_metrics
+            WHERE id = ?
+        `
+	default:
+		tx.Rollback()
+		return config.JobMetrics{}, fmt.Errorf("unsupported database type: %s", ds.dbType)
+	}
+
+	// Variables to store metrics information
+	var id, jobID, queue string
+	var durationMs int64
+	var errorText sql.NullString
+	var timestamp time.Time
+
+	// Execute the query
+	row := tx.QueryRow(query, queueName)
+	err = row.Scan(&id, &jobID, &queue, &durationMs, &errorText, &timestamp)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No metrics available - this is normal
+			tx.Rollback()
+			return config.JobMetrics{}, nil
+		}
+
+		// This is an actual error
+		tx.Rollback()
+		ds.logger.Error("failed to scan metrics", "error", err)
+		return config.JobMetrics{}, fmt.Errorf("failed to scan metrics: %w", err)
+	}
+
+	// Delete the metrics record instead of marking as processed
+	_, err = tx.Exec(deleteQuery, id)
+	if err != nil {
+		tx.Rollback()
+		ds.logger.Error("failed to delete metrics", "error", err, "id", id)
+		return config.JobMetrics{}, fmt.Errorf("failed to delete metrics: %w", err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		ds.logger.Error("failed to commit transaction", "error", err)
+		return config.JobMetrics{}, fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	// Convert duration from milliseconds back to Duration
+	duration := time.Duration(durationMs) * time.Millisecond
+
+	// Convert error string back to error if present
+	var jobError error
+	if errorText.Valid {
+		jobError = fmt.Errorf(errorText.String)
+	}
+
+	// Create and return the metrics
+	metrics := config.JobMetrics{
+		JobID:     jobID,
+		QueueName: queue,
+		Duration:  duration,
+		Error:     jobError,
+		Timestamp: timestamp,
+	}
+
+	return metrics, nil
 }
 
 // IsHealthy returns whether the database connection is healthy
 func (ds *DatabaseStore) IsHealthy() bool {
-	// TODO: Implement real logic
 	return true
 }

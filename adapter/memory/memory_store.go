@@ -55,6 +55,10 @@ func (store *InMemoryStore) ensureQueueInitialized(queueName string) {
 	}
 }
 
+func (store *InMemoryStore) GetDbConnection() interface{} {
+	return nil
+}
+
 func (store *InMemoryStore) Push(queueName string, jb job.Job, delay ...time.Duration) error {
 	store.mu.Lock()
 	store.ensureQueueInitialized(queueName)

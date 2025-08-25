@@ -85,6 +85,32 @@ func GetMigrations() []Migration {
                 )`,
 			},
 		},
+		{
+			TableName:   "job_metrics",
+			Description: "Create job metrics table",
+			SQL: map[string]string{
+				"postgres": `CREATE TABLE job_metrics (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    job_id TEXT NOT NULL,
+                    queue_name TEXT NOT NULL,
+                    duration BIGINT NOT NULL,
+                    error TEXT,
+                    timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+                    processed BOOLEAN NOT NULL DEFAULT FALSE
+                );
+                CREATE INDEX idx_job_metrics_processed ON job_metrics (processed);`,
+				"mysql": `CREATE TABLE job_metrics (
+                    id CHAR(36) PRIMARY KEY,
+                    job_id VARCHAR(255) NOT NULL,
+                    queue_name VARCHAR(255) NOT NULL,
+                    duration BIGINT NOT NULL,
+                    error TEXT,
+                    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    processed BOOLEAN NOT NULL DEFAULT FALSE,
+                    INDEX idx_job_metrics_processed (processed)
+                )`,
+			},
+		},
 	}
 }
 

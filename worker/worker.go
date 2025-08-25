@@ -12,6 +12,7 @@ import (
 
 	"github.com/saravanasai/goqueue/adapter"
 	"github.com/saravanasai/goqueue/config"
+
 	configuration "github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/internal/logger"
 	"github.com/saravanasai/goqueue/internal/stats"
