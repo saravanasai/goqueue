@@ -52,7 +52,7 @@ Here are some popular alternatives and related frameworks for job queues and bac
 | Non-blocking Retries | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
 | UI/CLI Tools         | ⚠️      | ✅    | ❌    | ✅       | ❌   | ❌        | ⚠️             |
 | Scheduling           | ✅      | ✅    | ⚠️    | ✅       | ❌   | ⚠️        | ⚠️             |
-| SQL/Transactional    | ✅      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
+| SQL                  | ✅      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
 
 ## Installation
 
