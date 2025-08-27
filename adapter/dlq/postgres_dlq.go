@@ -64,6 +64,8 @@ func (p *PostgresDLQ) Push(ctx context.Context, job *job.JobContext, err error) 
 		errorMsg = err.Error()
 	}
 
+	job.RetryCount = job.RetryCount + 1
+
 	_, err2 = tx.ExecContext(
 		ctx,
 		insertQuery,

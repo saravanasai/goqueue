@@ -114,7 +114,7 @@ func GetMigrations() []Migration {
 	}
 }
 
-func RunMigrations(db *sql.DB, dbType string, migrationsTable string) error {
+func RunMigrations(db *sql.DB, dbType string) error {
 	migrations := GetMigrations()
 
 	for _, migration := range migrations {

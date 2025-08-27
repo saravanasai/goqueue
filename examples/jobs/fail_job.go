@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/saravanasai/goqueue"
 )
@@ -16,6 +17,8 @@ type FailJob struct {
 
 // Process implements the job.Job interface
 func (e *FailJob) Process(ctx context.Context) error {
+
+	time.Sleep(5 * time.Second)
 	fmt.Printf("Sending email to %s: %s\n", e.To, e.Subject)
 	return errors.New("Failed job process due to failed job")
 }

@@ -62,7 +62,7 @@ func NewDatabaseStore(cfg config.DatabaseConfig, log logger.Logger, config confi
 
 	// Run migrations if auto-migrate is enabled
 	if cfg.AutoMigrate {
-		if err := migrations.RunMigrations(db, cfg.DatabaseType, cfg.MigrationsTable); err != nil {
+		if err := migrations.RunMigrations(db, cfg.DatabaseType); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("failed to run migrations: %w", err)
 		}
@@ -305,8 +305,52 @@ func (ds *DatabaseStore) Pop(queueName string) (job.JobContext, error) {
 	if ds.dbType == config.DatabaseTypePostgres {
 		row = tx.QueryRow(query, queueName)
 	} else {
-		// For MySQL, need to use a two-step process
-		row = tx.QueryRow(query, queueName)
+		// First, update a job and get its ID
+		updateQuery := `
+            UPDATE jobs AS j
+            JOIN (
+                SELECT id
+                FROM jobs
+                WHERE queue_name = ?
+                AND status = 'pending'
+                AND available_at <= NOW()
+                ORDER BY available_at
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            ) AS selected ON j.id = selected.id
+            SET j.reserved_at = NOW(),
+                j.status = 'processing'
+        `
+		result, err := tx.Exec(updateQuery, queueName)
+		if err != nil {
+			tx.Rollback()
+			ds.logger.Error("failed to update job status", "error", err)
+			return job.JobContext{}, fmt.Errorf("failed to update job status: %w", err)
+		}
+
+		rowsAffected, err := result.RowsAffected()
+		if err != nil {
+			tx.Rollback()
+			return job.JobContext{}, fmt.Errorf("failed to get rows affected: %w", err)
+		}
+
+		if rowsAffected == 0 {
+			// No jobs available
+			tx.Rollback()
+			return job.JobContext{}, nil
+		}
+
+		// Then get the updated job details
+		selectQuery := `
+            SELECT id, job_name, payload, queue_name, attempts, created_at, available_at, reserved_at
+            FROM jobs
+            WHERE queue_name = ?
+            AND status = 'processing'
+            AND reserved_at IS NOT NULL
+            ORDER BY reserved_at DESC
+            LIMIT 1
+        `
+		row = tx.QueryRow(selectQuery, queueName)
 	}
 
 	// Scan the result
@@ -438,9 +482,21 @@ func (ds *DatabaseStore) RetryJobWithMetadata(queueName string, jobCtx job.JobCo
 	// Calculate the available_at timestamp based on delay
 	var availableAt time.Time
 	if len(delay) > 0 && delay[0] > 0 {
+		// Use the delay provided by the worker, which already includes
+		// any exponential backoff calculations
 		availableAt = time.Now().UTC().Add(delay[0])
+		ds.logger.Debug("using provided delay for retry",
+			"delay", delay[0],
+			"queue", queueName,
+			"jobID", jobCtx.JobID,
+			"retryCount", jobCtx.RetryCount+1)
 	} else {
+		// If no delay is provided, use the current time
 		availableAt = time.Now().UTC()
+		ds.logger.Debug("no delay provided for retry",
+			"queue", queueName,
+			"jobID", jobCtx.JobID,
+			"retryCount", jobCtx.RetryCount+1)
 	}
 
 	// Increment retry count
@@ -515,6 +571,11 @@ func (ds *DatabaseStore) RetryJobWithMetadata(queueName string, jobCtx job.JobCo
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	ds.logger.Info("job scheduled for retry",
+		"queue", queueName,
+		"id", jobCtx.JobID,
+		"retryCount", retryCount,
+		"availableAt", availableAt)
 	return nil
 }
 

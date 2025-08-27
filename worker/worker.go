@@ -150,7 +150,6 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 }
 
 // processJobSafely executes a job with panic recovery, retry logic, and metrics collection.
-// It respects concurrency limits and handles job completion acknowledgment.
 func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.JobContext) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -191,10 +190,20 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 		// Send directly to DLQ
 		if w.config.DLQAdapter != nil {
 			if dlqErr := w.config.DLQAdapter.Push(ctx, &job, fmt.Errorf("job exceeded max retry attempts (%d)", maxAttempts)); dlqErr != nil {
-				w.logger.Error("Failed to push job to DLQ", "jobID", job.JobID, "error", dlqErr)
+				w.logger.Error("Failed to push job to DLQ", "workerID", workerID, "jobID", job.JobID, "error", dlqErr)
 			}
-		} else {
-			w.logger.Error("No DLQ configured, discarding failed job", "jobID", job.JobID)
+		}
+
+		// Record metrics for failed job
+		if w.config.OnJobComplete != nil {
+			metrics := configuration.JobMetrics{
+				QueueName: w.queueName,
+				JobID:     job.JobID,
+				Duration:  0, // No processing attempted
+				Error:     fmt.Errorf("job exceeded max retry attempts (%d)", maxAttempts),
+				Timestamp: time.Now(),
+			}
+			w.enqueueMetrics(metrics)
 		}
 
 		// Acknowledge the job to remove it from processing
@@ -241,21 +250,22 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 		}
 
 		if success {
+			// Job succeeded - acknowledge and record metrics
 			if ackErr := w.store.Ack(w.queueName, job.JobID); ackErr != nil {
 				w.logger.Error("Failed to ack job", "workerID", workerID, "jobID", job.JobID, "error", ackErr)
-			} else {
-				w.logger.Info("Completed job", "workerID", workerID, "jobID", job.JobID, "duration", processingTime)
-				if w.config.OnJobComplete != nil {
-					metrics := configuration.JobMetrics{
-						QueueName: w.queueName,
-						JobID:     job.JobID,
-						Duration:  processingTime,
-						Error:     lastErr,
-						Timestamp: time.Now(),
-					}
-					w.enqueueMetrics(metrics)
-				}
 			}
+
+			if w.config.OnJobComplete != nil {
+				metrics := configuration.JobMetrics{
+					QueueName: w.queueName,
+					JobID:     job.JobID,
+					Duration:  processingTime,
+					Error:     nil,
+					Timestamp: time.Now(),
+				}
+				w.enqueueMetrics(metrics)
+			}
+
 			return
 		}
 
@@ -266,44 +276,55 @@ func (w *Worker) processJobSafely(ctx context.Context, workerID int, job job.Job
 			w.logger.Error("Failed to process job", "workerID", workerID, "jobID", job.JobID, "attempt", attempt, "retryCount", job.RetryCount, "error", lastErr)
 		}
 
-		// Check if we should retry this job
+		// Calculate total attempts across retries
 		totalAttempts := job.RetryCount + attempt
-		if totalAttempts < maxAttempts {
-			delay := retryDelay
-			if exponential {
-				delay = retryDelay * time.Duration(1<<uint(job.RetryCount))
-			}
 
-			w.logger.Error("Using fallback blocking retry", "workerID", workerID, "jobID", job.JobID, "delay", delay)
-
-			if err := w.store.RetryJobWithMetadata(w.queueName, job, delay); err != nil {
-				w.logger.Error("Fallback retry failed", "workerID", workerID, "jobID", job.JobID, "error", err)
-			}
+		// If we've reached max attempts, break the retry loop
+		if totalAttempts >= maxAttempts {
+			break
 		}
+
+		// Otherwise, retry with appropriate delay
+		delay := retryDelay
+		if exponential {
+			// Improved exponential backoff calculation that considers both retry count and current attempt
+			delay = retryDelay * time.Duration(1<<uint(job.RetryCount+attempt-1))
+		}
+
+		if err := w.store.RetryJobWithMetadata(w.queueName, job, delay); err != nil {
+			w.logger.Error("Fallback retry failed", "workerID", workerID, "jobID", job.JobID, "error", err)
+		}
+
+		// Exit the loop after scheduling the retry
+		return
 	}
 
-	// All attempts failed
-	w.logger.Error("Job failed after max retries", "workerID", workerID, "jobID", job.JobID, "error", lastErr)
-
-	// Try to push to DLQ if configured
-	if w.config.DLQAdapter != nil {
-		if dlqErr := w.config.DLQAdapter.Push(ctx, &job, lastErr); dlqErr != nil {
-			w.logger.Error("Failed to push job to DLQ", "jobID", job.JobID, "error", dlqErr)
+	// If we get here, the job has failed after all retry attempts
+	// Send to DLQ if available
+	totalAttempts := job.RetryCount + maxAttemptsThisRun
+	if lastErr != nil && totalAttempts >= maxAttempts {
+		if w.config.DLQAdapter != nil {
+			if dlqErr := w.config.DLQAdapter.Push(ctx, &job, lastErr); dlqErr != nil {
+				w.logger.Error("Failed to push job to DLQ after retries", "workerID", workerID, "jobID", job.JobID, "error", dlqErr)
+			}
 		}
-	} else {
-		w.logger.Error("No DLQ configured, discarding failed job", "jobID", job.JobID)
-	}
 
-	// Record metrics if enabled
-	if w.config.OnJobComplete != nil {
-		metrics := configuration.JobMetrics{
-			QueueName: w.queueName,
-			JobID:     job.JobID,
-			Duration:  0,
-			Error:     lastErr,
-			Timestamp: time.Now(),
+		// Record metrics for the failed job
+		if w.config.OnJobComplete != nil {
+			metrics := configuration.JobMetrics{
+				QueueName: w.queueName,
+				JobID:     job.JobID,
+				Duration:  0, // No successful processing
+				Error:     lastErr,
+				Timestamp: time.Now(),
+			}
+			w.enqueueMetrics(metrics)
 		}
-		w.enqueueMetrics(metrics)
+
+		// Acknowledge the job to remove it from the queue
+		if ackErr := w.store.Ack(w.queueName, job.JobID); ackErr != nil {
+			w.logger.Error("Failed to ack job after max retries", "workerID", workerID, "jobID", job.JobID, "error", ackErr)
+		}
 	}
 }
 

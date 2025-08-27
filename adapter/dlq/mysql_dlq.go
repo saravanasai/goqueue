@@ -72,7 +72,7 @@ func (m *MySQLDLQ) Push(ctx context.Context, job *job.JobContext, err error) err
 	if err != nil {
 		errorMsg = err.Error()
 	}
-
+	job.RetryCount = job.RetryCount + 1
 	_, err2 = tx.ExecContext(
 		ctx,
 		insertQuery,

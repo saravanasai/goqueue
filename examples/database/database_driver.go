@@ -10,6 +10,8 @@ import (
 	"github.com/saravanasai/goqueue"
 	"github.com/saravanasai/goqueue/config"
 	"github.com/saravanasai/goqueue/examples/jobs"
+	"github.com/saravanasai/goqueue/internal/logger"
+	"github.com/saravanasai/goqueue/middleware"
 )
 
 func main() {
@@ -27,6 +29,9 @@ func main() {
 	cfg = cfg.WithMaxRetryAttempts(5)
 	cfg = cfg.WithExponentialBackoff(true)
 	cfg = cfg.WithRetryDelay(1 * time.Minute)
+	logger := logger.NewZapLogger()
+	loggingMiddleware := middleware.LoggingMiddleware(logger)
+	cfg = cfg.WithMiddleware(loggingMiddleware)
 
 	q, err := goqueue.NewQueueWithDefaults("emails", cfg)
 	if err != nil {

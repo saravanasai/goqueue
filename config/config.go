@@ -130,9 +130,7 @@ type DatabaseConfig struct {
 	DatabaseType     string // "postgres", "mysql".
 
 	// Migration options
-	AutoMigrate     bool
-	MigrationsTable string
-
+	AutoMigrate bool
 	// Connection pool settings
 	MaxOpenConns    int
 	MaxIdleConns    int
@@ -290,11 +288,44 @@ func NewPostgresConfig(connectionString string) Config {
 		ConnectionString: connectionString,
 		DatabaseType:     DatabaseTypePostgres,
 		AutoMigrate:      true,
-		MigrationsTable:  "goqueue_migrations",
 		MaxOpenConns:     10,
 		MaxIdleConns:     5,
 		ConnMaxLifetime:  5 * time.Minute,
 	}
+	return Config{
+		Driver:             DriverDatabase,
+		DriverConfig:       dbConfig,
+		MaxWorkers:         sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
+		OnJobComplete:      nil,
+		MaxRetryAttempts:   3,
+		RetryDelay:         2 * time.Second,
+		ExponentialBackoff: false,
+	}
+}
+
+// NewMySQLConfig creates a new Config instance with MySQL driver and sensible defaults.
+// This is suitable for production environments using MySQL as the queue backend.
+//
+// The MySQL driver provides durable storage and can be used in distributed environments
+// where multiple application instances need to share the same job queue.
+//
+// Parameters:
+//   - connectionString: MySQL connection string (e.g., "user:password@tcp(127.0.0.1:3306)/dbname?parseTime=true")
+//
+// Returns:
+//   - A Config instance configured with the MySQL database driver
+func NewMySQLConfig(connectionString string) Config {
+
+	dbConfig := DatabaseConfig{
+		ConnectionString: connectionString,
+		DatabaseType:     DatabaseTypeMySQL,
+		AutoMigrate:      true,
+		MaxOpenConns:     10,
+		MaxIdleConns:     5,
+		ConnMaxLifetime:  5 * time.Minute,
+	}
+
 	return Config{
 		Driver:             DriverDatabase,
 		DriverConfig:       dbConfig,
