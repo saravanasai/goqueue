@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/saravanasai/goqueue"
 	"github.com/saravanasai/goqueue/config"
@@ -13,13 +14,19 @@ import (
 
 func main() {
 
-	cfg := config.NewPostgresConfig("postgresql://postgres:root@db.wwuofuykolqrrtgkjyru.supabase.co:5432/postgres")
+	// cfg := config.NewPostgresConfig("postgresql://postgres:root@db.wwuofuykolqrrtgkjyru.supabase.co:5432/postgres")
+
+	cfg := config.NewMySQLConfig("root:root@tcp(localhost:3306)/wizpense?parseTime=true")
 
 	cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 		// Record metrics in your monitoring system (Prometheus, etc.)
 		fmt.Printf("Job: %s, Queue: %s, Duration: %v, Error: %v\n",
 			metrics.JobID, metrics.QueueName, metrics.Duration, metrics.Error)
 	})
+
+	cfg = cfg.WithMaxRetryAttempts(5)
+	cfg = cfg.WithExponentialBackoff(true)
+	cfg = cfg.WithRetryDelay(1 * time.Minute)
 
 	q, err := goqueue.NewQueueWithDefaults("emails", cfg)
 	if err != nil {
