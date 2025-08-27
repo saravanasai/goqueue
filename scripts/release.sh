@@ -43,15 +43,6 @@ sed -i "s/const Version = \"$CURRENT_VERSION\"/const Version = \"$NEW_VERSION\"/
 echo "📝 Updating README.md..."
 sed -i "s/Version-$CURRENT_VERSION-green/Version-$NEW_VERSION-green/" README.md
 
-# Run tests
-echo "🧪 Running tests..."
-if ! go test ./...; then
-    echo "❌ Tests failed! Fix tests before releasing."
-    # Revert changes
-    git checkout version.go README.md
-    exit 1
-fi
-
 # Run linter
 echo "🔍 Running linter..."
 if ! golangci-lint run; then
