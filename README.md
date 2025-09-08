@@ -326,5 +326,6 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 
 Upcoming features planned for GoQueue:
 
-- **MySQL Driver**: Additional SQL backend option.
-  .
+- **NATS Driver**: NATS as backend option.
+- **Event Bus**: For better metric collection.
+- **Transaction interface**.
