@@ -46,12 +46,12 @@ Here are some popular alternatives and related frameworks for job queues and bac
 | -------------------- | ------- | ----- | ----- | -------- | ---- | --------- | -------------- |
 | Multiple Backends    | ✅      | ❌    | ❌    | ❌       | ❌   | ✅        | ✅             |
 | Clean API            | ✅      | ✅    | ✅    | ⚠️       | ⚠️   | ❌        | ⚠️             |
-| Middleware Support   | ✅      | ❌    | ❌    | ⚠️       | ❌   | ❌        | ❌             |
-| Test Coverage        | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
+| Middleware Support   | ✅      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ❌             |
+| Test Coverage        | ✅      | ✅    | ✅    | ✅       | ⚠️   | ⚠️        | ⚠️             |
 | AWS SQS Support      | ✅      | ❌    | ❌    | ❌       | ❌   | ❌        | ❌             |
-| Non-blocking Retries | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
-| UI/CLI Tools         | ⚠️      | ✅    | ❌    | ✅       | ❌   | ❌        | ⚠️             |
-| Scheduling           | ✅      | ✅    | ⚠️    | ✅       | ❌   | ⚠️        | ⚠️             |
+| Non-blocking Retries | ✅      | ✅    | ✅    | ✅       | ⚠️   | ⚠️        | ⚠️             |
+| UI/CLI Tools         | ⚠️      | ✅    | ✅    | ✅       | ❌   | ❌        | ⚠️             |
+| Scheduling           | ✅      | ✅    | ✅    | ✅       | ❌   | ⚠️        | ⚠️             |
 | SQL                  | ✅      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
 
 ## Installation
@@ -326,5 +326,6 @@ cfg = cfg.WithMetricsCallback(func(metrics config.JobMetrics) {
 
 Upcoming features planned for GoQueue:
 
-- **MySQL Driver**: Additional SQL backend option.
-  .
+- **NATS Driver**: NATS as backend option.
+- **Event Bus**: For better metric collection.
+- **Transaction interface** : For better transactional jobs
