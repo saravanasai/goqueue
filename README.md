@@ -328,4 +328,4 @@ Upcoming features planned for GoQueue:
 
 - **NATS Driver**: NATS as backend option.
 - **Event Bus**: For better metric collection.
-- **Transaction interface**.
+- **Transaction interface** : For better transactional jobs
