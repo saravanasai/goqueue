@@ -46,12 +46,12 @@ Here are some popular alternatives and related frameworks for job queues and bac
 | -------------------- | ------- | ----- | ----- | -------- | ---- | --------- | -------------- |
 | Multiple Backends    | ✅      | ❌    | ❌    | ❌       | ❌   | ✅        | ✅             |
 | Clean API            | ✅      | ✅    | ✅    | ⚠️       | ⚠️   | ❌        | ⚠️             |
-| Middleware Support   | ✅      | ❌    | ❌    | ⚠️       | ❌   | ❌        | ❌             |
-| Test Coverage        | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
+| Middleware Support   | ✅      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ❌             |
+| Test Coverage        | ✅      | ✅    | ✅    | ✅       | ⚠️   | ⚠️        | ⚠️             |
 | AWS SQS Support      | ✅      | ❌    | ❌    | ❌       | ❌   | ❌        | ❌             |
-| Non-blocking Retries | ✅      | ✅    | ⚠️    | ✅       | ⚠️   | ⚠️        | ⚠️             |
-| UI/CLI Tools         | ⚠️      | ✅    | ❌    | ✅       | ❌   | ❌        | ⚠️             |
-| Scheduling           | ✅      | ✅    | ⚠️    | ✅       | ❌   | ⚠️        | ⚠️             |
+| Non-blocking Retries | ✅      | ✅    | ✅    | ✅       | ⚠️   | ⚠️        | ⚠️             |
+| UI/CLI Tools         | ⚠️      | ✅    | ✅    | ✅       | ❌   | ❌        | ⚠️             |
+| Scheduling           | ✅      | ✅    | ✅    | ✅       | ❌   | ⚠️        | ⚠️             |
 | SQL                  | ✅      | ❌    | ✅    | ⚠️       | ❌   | ❌        | ⚠️             |
 
 ## Installation
