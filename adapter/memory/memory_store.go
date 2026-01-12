@@ -170,8 +170,11 @@ func (store *InMemoryStore) Ack(queueName string, payload string) error {
 }
 
 func (store *InMemoryStore) Retry(j job.Job, delay time.Duration) error {
-
-	return nil
+    if j == nil {
+        return fmt.Errorf("job cannot be nil")
+    }
+    
+    return store.Push("", j, delay) 
 }
 
 func (store *InMemoryStore) RetryJobWithMetadata(queueName string, rJob job.JobContext, delay ...time.Duration) error {

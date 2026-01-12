@@ -123,7 +123,7 @@ type JobContext struct {
 
 ```go
 // Enable exponential backoff with custom settings
-cfg := config.NewRedisConfig("localhost:6379", "", 0).
+cfg := config.NewRedisConfig("localhost:6379", "", "", 0).
     WithMaxRetryAttempts(5).
     WithRetryDelay(1 * time.Second).
     WithExponentialBackoff(true).

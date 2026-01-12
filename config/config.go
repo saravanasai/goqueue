@@ -85,6 +85,8 @@ type Config struct {
 type RedisConfig struct {
 	// Addr is the Redis server address (e.g., "localhost:6379")
 	Addr string
+	// Username is the Redis server username (optional)
+	Username string
 	// Password is the Redis server password (optional)
 	Password string
 	// Db is the Redis database number to use
@@ -182,12 +184,13 @@ func NewInMemoryConfig() Config {
 //
 // Parameters:
 //   - address: Redis server address (e.g., "localhost:6379")
+//   - username: Redis server username, or empty string if no username
 //   - password: Redis server password, or empty string if no password
 //   - db: Redis database number to use
 //
 // Returns:
 //   - A Config instance configured with the Redis driver
-func NewRedisConfig(address string, password string, db int) Config {
+func NewRedisConfig(address, username, password string, db int) Config {
 	return Config{
 		Driver: DriverRedis,
 		DriverConfig: RedisConfig{

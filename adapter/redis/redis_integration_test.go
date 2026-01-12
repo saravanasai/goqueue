@@ -34,7 +34,7 @@ func TestRedisIntegrationPushPopAck(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	ensureIntegrationJobRegistered()
@@ -63,7 +63,7 @@ func TestRedisIntegrationPushBatchPopAck(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	ensureIntegrationJobRegistered()
@@ -99,7 +99,7 @@ func TestRedisIntegrationEnqueueDequeueMetrics(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	q := "integration_metrics_q"
@@ -122,7 +122,7 @@ func TestRedisIntegrationIsHealthy(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	if !store.IsHealthy() {
@@ -136,7 +136,7 @@ func TestRedisIntegrationPushWithDelay(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	ensureIntegrationJobRegistered()
@@ -214,7 +214,7 @@ func TestRedisIntegrationRetryJobWithMetadata(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	ensureIntegrationJobRegistered()

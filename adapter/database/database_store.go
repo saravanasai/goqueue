@@ -729,7 +729,7 @@ func (ds *DatabaseStore) DequeueMetrics(queueName string) (config.JobMetrics, er
 	// Convert error string back to error if present
 	var jobError error
 	if errorText.Valid {
-		jobError = fmt.Errorf(errorText.String)
+		jobError = fmt.Errorf("%s", errorText.String)
 	}
 
 	// Create and return the metrics

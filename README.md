@@ -189,6 +189,7 @@ queue, err := goqueue.NewQueueWithDefaults("emails", cfg)
 ```go
 cfg := config.NewRedisConfig(
     "localhost:6379", // Redis server address
+    "",               // Username (if any)
     "",               // Password (if any)
     0,                // Database number
 )
@@ -211,7 +212,7 @@ queue, err := goqueue.NewQueueWithDefaults("notifications", cfg)
 
 ```go
 // Basic configuration
-cfg := config.NewRedisConfig("localhost:6379", "", 0)
+cfg := config.NewRedisConfig("localhost:6379", "", "", 0)
 
 // Worker options
 cfg = cfg.WithMaxWorkers(5)               // Number of worker goroutines

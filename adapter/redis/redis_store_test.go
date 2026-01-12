@@ -56,7 +56,7 @@ func TestRedisPushOnly(t *testing.T) {
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
 
 	// Create configuration
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 
 	// Create Redis store
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
@@ -108,7 +108,7 @@ func TestRedisPushBatch(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	// Register a unique job name for this test
@@ -155,7 +155,7 @@ func TestRedisPopAndAck(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	// Register job (idempotent)
@@ -221,7 +221,7 @@ func TestEnqueueDequeueMetrics(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	queueName := "test_metrics_queue"
@@ -255,7 +255,7 @@ func TestRedisIsHealthy(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	if !store.IsHealthy() {
@@ -280,7 +280,7 @@ func TestPushWhenRedisUnavailable(t *testing.T) {
 	// Create store that points to closed redis
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(addr, "", 0, testLogger)
-	cfg := config.NewRedisConfig(addr, "", 0)
+	cfg := config.NewRedisConfig(addr, "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, addr, 0, testLogger)
 
 	// Ensure registry has TestJob
@@ -304,7 +304,7 @@ func TestPushBatchWithMarshalError(t *testing.T) {
 
 	testLogger := logger.NewZapLogger()
 	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	// Ensure registry has TestJob
