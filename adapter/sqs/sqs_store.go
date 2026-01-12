@@ -13,11 +13,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/sqs"
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
-	"github.com/saravanasai/goqueue/adapter/utils"
-	jobConfig "github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/internal/registry"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/adapter/utils"
+	jobConfig "github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/internal/registry"
+	"github.com/danish-a1/goqueue/job"
 )
 
 const (

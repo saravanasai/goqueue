@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/job"
 )
 
 type Constructor func() job.Job

@@ -5,9 +5,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/saravanasai/goqueue/adapter/dlq"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/middleware"
+	"github.com/danish-a1/goqueue/adapter/dlq"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/middleware"
 )
 
 // Driver type constants for supported queue backends

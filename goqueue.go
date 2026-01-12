@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/registry"
-	"github.com/saravanasai/goqueue/internal/stats"
-	"github.com/saravanasai/goqueue/job"
-	"github.com/saravanasai/goqueue/queue"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/registry"
+	"github.com/danish-a1/goqueue/internal/stats"
+	"github.com/danish-a1/goqueue/job"
+	"github.com/danish-a1/goqueue/queue"
 )
 
 // Job is the interface clients must implement for their jobs.

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/job"
 	"github.com/redis/go-redis/v9"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/job"
 )
 
 const dlqPrefix = "dlq:"

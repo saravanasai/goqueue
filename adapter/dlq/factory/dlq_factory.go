@@ -3,10 +3,10 @@ package factory
 import (
 	"database/sql"
 
+	"github.com/danish-a1/goqueue/adapter/dlq"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
 	"github.com/redis/go-redis/v9"
-	"github.com/saravanasai/goqueue/adapter/dlq"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
 )
 
 // NewDatabaseDLQ creates a new database-backed DLQ based on the database type

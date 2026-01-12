@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/danish-a1/goqueue/internal/logger"
 	"github.com/redis/go-redis/v9"
-	"github.com/saravanasai/goqueue/internal/logger"
 )
 
 type RedisConnectionInfo struct {

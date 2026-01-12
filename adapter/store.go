@@ -3,8 +3,8 @@ package adapter
 import (
 	"time"
 
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/job"
 )
 
 type Store interface {

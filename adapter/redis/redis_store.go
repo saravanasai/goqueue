@@ -7,13 +7,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/danish-a1/goqueue/adapter/utils"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/internal/manager"
+	"github.com/danish-a1/goqueue/internal/registry"
+	"github.com/danish-a1/goqueue/job"
 	"github.com/redis/go-redis/v9"
-	"github.com/saravanasai/goqueue/adapter/utils"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/internal/manager"
-	"github.com/saravanasai/goqueue/internal/registry"
-	"github.com/saravanasai/goqueue/job"
 )
 
 const (

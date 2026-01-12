@@ -4,7 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/saravanasai/goqueue/config"
+	"github.com/danish-a1/goqueue/config"
 )
 
 // Migration represents a database migration

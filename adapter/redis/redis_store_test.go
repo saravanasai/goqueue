@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/internal/manager"
+	"github.com/danish-a1/goqueue/internal/registry"
+	"github.com/danish-a1/goqueue/job"
 	"github.com/redis/go-redis/v9"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/internal/manager"
-	"github.com/saravanasai/goqueue/internal/registry"
-	"github.com/saravanasai/goqueue/job"
 )
 
 // TestJob is a simple job implementation for testing

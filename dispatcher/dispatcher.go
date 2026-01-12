@@ -3,9 +3,9 @@ package dispatcher
 import (
 	"time"
 
-	"github.com/saravanasai/goqueue/adapter"
-	"github.com/saravanasai/goqueue/internal/stats"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/adapter"
+	"github.com/danish-a1/goqueue/internal/stats"
+	"github.com/danish-a1/goqueue/job"
 )
 
 type Dispatcher struct {

@@ -1,10 +1,10 @@
-module github.com/saravanasai/goqueue/examples
+module github.com/danish-a1/goqueue/examples
 
 go 1.24.0
 
-replace github.com/saravanasai/goqueue => ../
+replace github.com/danish-a1/goqueue => ../
 
-require github.com/saravanasai/goqueue v0.0.0-00010101000000-000000000000
+require github.com/danish-a1/goqueue v0.0.0-00010101000000-000000000000
 
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect

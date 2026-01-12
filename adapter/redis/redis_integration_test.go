@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/internal/manager"
-	"github.com/saravanasai/goqueue/internal/registry"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/internal/manager"
+	"github.com/danish-a1/goqueue/internal/registry"
+	"github.com/danish-a1/goqueue/job"
 )
 
 // Integration test job type (unique name to avoid collisions with other tests)
