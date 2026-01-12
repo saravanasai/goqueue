@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/registry"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/registry"
+	"github.com/danish-a1/goqueue/job"
 )
 
 // TestJob implements the job.Job interface for testing

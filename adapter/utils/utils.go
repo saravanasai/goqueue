@@ -3,8 +3,8 @@ package utils
 import (
 	"reflect"
 
+	"github.com/danish-a1/goqueue/job"
 	"github.com/google/uuid"
-	"github.com/saravanasai/goqueue/job"
 )
 
 // genearte JOB Id for jobs pushed

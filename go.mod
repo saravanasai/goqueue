@@ -1,4 +1,4 @@
-module github.com/saravanasai/goqueue
+module github.com/danish-a1/goqueue
 
 go 1.24.0
 

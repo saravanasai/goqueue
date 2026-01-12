@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/job"
 )
 
 // HandlerFunc defines the function signature for processing a job.

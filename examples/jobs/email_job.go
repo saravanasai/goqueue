@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/saravanasai/goqueue"
+	"github.com/danish-a1/goqueue"
 )
 
 // EmailJob implements the job.Job interface

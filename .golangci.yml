@@ -35,7 +35,7 @@ linters-settings:
   govet:
     check-shadowing: true
   goimports:
-    local-prefixes: github.com/saravanasai/goqueue
+    local-prefixes: github.com/danish-a1/goqueue
 
 issues:
   exclude-rules:

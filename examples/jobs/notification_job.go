@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/saravanasai/goqueue"
+	"github.com/danish-a1/goqueue"
 )
 
 // NotificationJob demonstrates a job that can be delayed

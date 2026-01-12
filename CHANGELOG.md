@@ -45,5 +45,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Worker Management**: Concurrent worker pools with lifecycle management
 - **Metrics**: Built-in metrics collection for monitoring and observability
 
-[Unreleased]: https://github.com/saravanasai/goqueue/compare/v0.0.1...HEAD
-[0.0.1]: https://github.com/saravanasai/goqueue/releases/tag/v0.0.1
+[Unreleased]: https://github.com/danish-a1/goqueue/compare/v0.0.1...HEAD
+[0.0.1]: https://github.com/danish-a1/goqueue/releases/tag/v0.0.1

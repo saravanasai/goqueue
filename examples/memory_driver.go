@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
-	"github.com/saravanasai/goqueue"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/examples/jobs"
+	"github.com/danish-a1/goqueue"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/examples/jobs"
 )
 
 func main() {

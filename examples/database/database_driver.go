@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/saravanasai/goqueue"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/examples/jobs"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/middleware"
+	"github.com/danish-a1/goqueue"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/examples/jobs"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/middleware"
 )
 
 func main() {

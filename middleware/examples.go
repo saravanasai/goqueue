@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/job"
 )
 
 // LoggingMiddleware creates a middleware that logs job execution details.

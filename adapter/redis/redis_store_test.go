@@ -8,11 +8,11 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/internal/manager"
-	"github.com/saravanasai/goqueue/internal/registry"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/internal/manager"
+	"github.com/danish-a1/goqueue/internal/registry"
+	"github.com/danish-a1/goqueue/job"
 )
 
 // TestJob is a simple job implementation for testing
@@ -53,10 +53,10 @@ func TestRedisPushOnly(t *testing.T) {
 	testLogger := logger.NewZapLogger()
 
 	// Create Redis manager
-	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", "", 0, testLogger)
 
 	// Create configuration
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 
 	// Create Redis store
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
@@ -107,8 +107,8 @@ func TestRedisPushBatch(t *testing.T) {
 	defer miniRedis.Close()
 
 	testLogger := logger.NewZapLogger()
-	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	// Register a unique job name for this test
@@ -154,8 +154,8 @@ func TestRedisPopAndAck(t *testing.T) {
 	defer miniRedis.Close()
 
 	testLogger := logger.NewZapLogger()
-	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	// Register job (idempotent)
@@ -220,8 +220,8 @@ func TestEnqueueDequeueMetrics(t *testing.T) {
 	defer miniRedis.Close()
 
 	testLogger := logger.NewZapLogger()
-	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	queueName := "test_metrics_queue"
@@ -254,8 +254,8 @@ func TestRedisIsHealthy(t *testing.T) {
 	defer miniRedis.Close()
 
 	testLogger := logger.NewZapLogger()
-	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	if !store.IsHealthy() {
@@ -279,8 +279,8 @@ func TestPushWhenRedisUnavailable(t *testing.T) {
 
 	// Create store that points to closed redis
 	testLogger := logger.NewZapLogger()
-	redisManager := manager.NewRedisClientManager(addr, "", 0, testLogger)
-	cfg := config.NewRedisConfig(addr, "", 0)
+	redisManager := manager.NewRedisClientManager(addr, "", "", 0, testLogger)
+	cfg := config.NewRedisConfig(addr, "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, addr, 0, testLogger)
 
 	// Ensure registry has TestJob
@@ -303,8 +303,8 @@ func TestPushBatchWithMarshalError(t *testing.T) {
 	defer miniRedis.Close()
 
 	testLogger := logger.NewZapLogger()
-	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", 0, testLogger)
-	cfg := config.NewRedisConfig(miniRedis.Addr(), "", 0)
+	redisManager := manager.NewRedisClientManager(miniRedis.Addr(), "", "", 0, testLogger)
+	cfg := config.NewRedisConfig(miniRedis.Addr(), "", "", 0)
 	store := NewRedisStore(client, cfg, redisManager, miniRedis.Addr(), 0, testLogger)
 
 	// Ensure registry has TestJob

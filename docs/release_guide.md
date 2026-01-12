@@ -167,7 +167,7 @@ git branch -d hotfix/critical-bug-fix
 
 After pushing tags, create GitHub releases:
 
-1. Go to `https://github.com/saravanasai/goqueue/releases`
+1. Go to `https://github.com/danish-a1/goqueue/releases`
 2. Click "Create a new release"
 3. Choose the tag (e.g., `v0.0.2`)
 4. Write release notes:
@@ -181,7 +181,7 @@ After pushing tags, create GitHub releases:
 ## Installation
 
 ```bash
-go get github.com/saravanasai/goqueue@v0.0.2
+go get github.com/danish-a1/goqueue@v0.0.2
 ```
 ````
 
@@ -196,7 +196,7 @@ package main
 
 import (
     "fmt"
-    "github.com/saravanasai/goqueue"
+    "github.com/danish-a1/goqueue"
 )
 
 func main() {

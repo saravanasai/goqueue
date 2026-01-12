@@ -9,19 +9,19 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/saravanasai/goqueue/adapter"
-	"github.com/saravanasai/goqueue/adapter/database"
-	"github.com/saravanasai/goqueue/adapter/dlq/factory"
-	"github.com/saravanasai/goqueue/adapter/memory"
-	"github.com/saravanasai/goqueue/adapter/redis"
-	"github.com/saravanasai/goqueue/adapter/sqs"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/dispatcher"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/internal/manager"
-	"github.com/saravanasai/goqueue/internal/stats"
-	"github.com/saravanasai/goqueue/job"
-	"github.com/saravanasai/goqueue/worker"
+	"github.com/danish-a1/goqueue/adapter"
+	"github.com/danish-a1/goqueue/adapter/database"
+	"github.com/danish-a1/goqueue/adapter/dlq/factory"
+	"github.com/danish-a1/goqueue/adapter/memory"
+	"github.com/danish-a1/goqueue/adapter/redis"
+	"github.com/danish-a1/goqueue/adapter/sqs"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/dispatcher"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/internal/manager"
+	"github.com/danish-a1/goqueue/internal/stats"
+	"github.com/danish-a1/goqueue/job"
+	"github.com/danish-a1/goqueue/worker"
 )
 
 // Queue represents a job queue instance that manages job dispatching and processing.
@@ -73,7 +73,7 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 			queueCancel()
 			return nil, fmt.Errorf("invalid Redis config provided")
 		}
-		redisMgr := manager.NewRedisClientManager(redisCfg.Addr, redisCfg.Password, redisCfg.Db, logger)
+		redisMgr := manager.NewRedisClientManager(redisCfg.Addr, redisCfg.Username, redisCfg.Password, redisCfg.Db, logger)
 		redisMgr.StartPeriodicHealthCheck(queueCtx)
 		client := redisMgr.GetClient(redisCfg.Addr, redisCfg.Password, redisCfg.Db)
 		cfg = cfg.WithDLQAdapter(factory.NewRedisDLQ(client, logger))

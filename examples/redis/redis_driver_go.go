@@ -7,19 +7,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/saravanasai/goqueue"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/examples/jobs"
+	"github.com/danish-a1/goqueue"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/examples/jobs"
 )
 
 func main() {
 	// Redis connection parameters - replace with your actual values
 	redisAddr := "localhost:6379" // Redis server address
+	redisUsername := ""           // Redis username (if any)
 	redisPassword := ""           // Redis password (if any)
 	redisDB := 0                  // Redis database number
 
 	// Create a queue with Redis backend
-	cfg := config.NewRedisConfig(redisAddr, redisPassword, redisDB)
+	cfg := config.NewRedisConfig(redisAddr, redisUsername, redisPassword, redisDB)
 	q, err := goqueue.NewQueueWithDefaults("email-queue", cfg)
 	if err != nil {
 		log.Fatalf("Failed to create queue: %v", err)

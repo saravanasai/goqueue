@@ -1,6 +1,7 @@
 package goqueue
 
 import (
+	"regexp"
 	"testing"
 )
 
@@ -25,8 +26,11 @@ func TestVersionConstant(t *testing.T) {
 		t.Error("Version constant should not be empty")
 	}
 
-	// Should start with 0.0.1 for initial release
-	if Version != "0.0.2" {
-		t.Logf("Version is %s (this test will need updating for new versions)", Version)
+	// Version should follow semantic versioning pattern like "0.2.4.1"
+	// This regex checks for three dot-separated numbers.
+	
+	re := regexp.MustCompile(`^\d+\.\d+\.\d+(?:\.\d+)?$`)
+	if !re.MatchString(Version) {
+		t.Errorf("Version constant '%s' does not match semantic versioning pattern 'X.Y.Z'", Version)
 	}
 }

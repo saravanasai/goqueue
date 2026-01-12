@@ -10,12 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/saravanasai/goqueue/adapter"
-	configuration "github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/internal/stats"
-	"github.com/saravanasai/goqueue/job"
-	"github.com/saravanasai/goqueue/middleware"
+	"github.com/danish-a1/goqueue/adapter"
+	configuration "github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/internal/stats"
+	"github.com/danish-a1/goqueue/job"
+	"github.com/danish-a1/goqueue/middleware"
 	"golang.org/x/sync/semaphore"
 )
 

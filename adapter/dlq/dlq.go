@@ -5,7 +5,7 @@ package dlq
 import (
 	"context"
 
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/job"
 )
 
 // DLQAdapter defines the interface for Dead Letter Queue implementations.

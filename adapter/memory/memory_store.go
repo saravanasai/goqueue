@@ -6,10 +6,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/saravanasai/goqueue/adapter/utils"
-	"github.com/saravanasai/goqueue/config"
-	"github.com/saravanasai/goqueue/internal/logger"
-	"github.com/saravanasai/goqueue/job"
+	"github.com/danish-a1/goqueue/adapter/utils"
+	"github.com/danish-a1/goqueue/config"
+	"github.com/danish-a1/goqueue/internal/logger"
+	"github.com/danish-a1/goqueue/job"
 )
 
 type scheduledJob struct {
@@ -170,8 +170,11 @@ func (store *InMemoryStore) Ack(queueName string, payload string) error {
 }
 
 func (store *InMemoryStore) Retry(j job.Job, delay time.Duration) error {
-
-	return nil
+    if j == nil {
+        return fmt.Errorf("job cannot be nil")
+    }
+    
+    return store.Push("", j, delay) 
 }
 
 func (store *InMemoryStore) RetryJobWithMetadata(queueName string, rJob job.JobContext, delay ...time.Duration) error {

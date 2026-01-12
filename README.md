@@ -5,7 +5,7 @@
   <p><em>Reliable Job Processing for Go Applications</em></p>
   
   <p>
-    <a href="https://pkg.go.dev/github.com/saravanasai/goqueue"><img src="https://pkg.go.dev/badge/github.com/saravanasai/goqueue.svg" alt="Go Reference"></a>
+    <a href="https://pkg.go.dev/github.com/danish-a1/goqueue"><img src="https://pkg.go.dev/badge/github.com/danish-a1/goqueue.svg" alt="Go Reference"></a>
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
     <img src="https://img.shields.io/badge/Go-%3E=1.18-blue" alt="Go Version">
     <img src="https://img.shields.io/badge/Version-0.0.1-green" alt="Version">
@@ -57,7 +57,7 @@ Here are some popular alternatives and related frameworks for job queues and bac
 ## Installation
 
 ```bash
-go get github.com/saravanasai/goqueue
+go get github.com/danish-a1/goqueue
 ```
 
 ## Quick Start
@@ -71,8 +71,8 @@ import (
     "log"
     "time"
 
-    "github.com/saravanasai/goqueue"
-    "github.com/saravanasai/goqueue/config"
+    "github.com/danish-a1/goqueue"
+    "github.com/danish-a1/goqueue/config"
 )
 
 // Define your job
@@ -137,8 +137,8 @@ import (
     "fmt"
     "log"
 
-    "github.com/saravanasai/goqueue"
-    "github.com/saravanasai/goqueue/config"
+    "github.com/danish-a1/goqueue"
+    "github.com/danish-a1/goqueue/config"
 )
 
 func main() {
@@ -189,6 +189,7 @@ queue, err := goqueue.NewQueueWithDefaults("emails", cfg)
 ```go
 cfg := config.NewRedisConfig(
     "localhost:6379", // Redis server address
+    "",               // Username (if any)
     "",               // Password (if any)
     0,                // Database number
 )
@@ -211,7 +212,7 @@ queue, err := goqueue.NewQueueWithDefaults("notifications", cfg)
 
 ```go
 // Basic configuration
-cfg := config.NewRedisConfig("localhost:6379", "", 0)
+cfg := config.NewRedisConfig("localhost:6379", "", "", 0)
 
 // Worker options
 cfg = cfg.WithMaxWorkers(5)               // Number of worker goroutines
