@@ -20,6 +20,8 @@ const (
 	DriverSQS = "sqs"
 	// DriverDatabase is reserved for future database backend support
 	DriverDatabase = "database"
+	// DriverNATS uses NATS JetStream as the backend storage
+	DriverNATS = "nats"
 )
 
 const (
@@ -139,6 +141,31 @@ type DatabaseConfig struct {
 
 func (c DatabaseConfig) Type() string {
 	return DriverDatabase
+}
+
+type NATSConfig struct {
+	// URL is the NATS server connection URL (e.g "nats://localhost:4222")
+	URL string
+	// StreamName is the JetStream stream name jobs will be stored under
+	StreamName string
+	// MaxDeliver is the maximum number of delivery attempts JetStream will make
+	// for a message before giving up. If left at 0, NewNATSStore derives a safe
+	// value (MaxRetryAttempts + 2).
+	MaxDeliver int
+	// AckWait is how long JetStream waits for an Ack before redelivering a message.
+	AckWait time.Duration
+	// MaxMessages is currently reserved and has no effect
+	MaxMessages int
+	// CredentialsFile is the path to a NATS .creds file (optional)
+	CredentialsFile string
+	// Token is a bearer token for authentication (optional, alternative to CredentialsFile)
+	Token string
+	// RequestTimeout bounds how long synchronous JetStream calls
+	RequestTimeout time.Duration
+}
+
+func (n NATSConfig) Type() string {
+	return DriverNATS
 }
 
 // sensibleDefaultMaxWorkers returns a reasonable default for MaxWorkers
@@ -332,6 +359,35 @@ func NewMySQLConfig(connectionString string) Config {
 		MaxWorkers:         sensibleDefaultMaxWorkers(),
 		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
 		OnJobComplete:      nil,
+		MaxRetryAttempts:   3,
+		RetryDelay:         2 * time.Second,
+		ExponentialBackoff: false,
+	}
+}
+
+// NewNATSConfig creates a new Config instance with the NATS JetStream driver and sensible defaults.
+// This is suitable for production environments that already run NATS infrastructure and want
+// durable job delivery, including scheduled/delayed jobs via JetStream's message scheduler.
+//
+// Parameters:
+//   - url: NATS server connection URL (e.g., "nats://localhost:4222")
+//   - streamName: JetStream stream name jobs will be stored under
+//
+// Returns:
+//   - A Config instance configured with the NATS driver
+func NewNATSConfig(url, streamName string) Config {
+	return Config{
+		Driver: DriverNATS,
+		DriverConfig: NATSConfig{
+			URL:            url,
+			StreamName:     streamName,
+			MaxDeliver:     0,
+			AckWait:        30 * time.Second,
+			MaxMessages:    1,
+			RequestTimeout: 10 * time.Second,
+		},
+		MaxWorkers:         sensibleDefaultMaxWorkers(),
+		ConcurrencyLimit:   sensibleDefaultConcurrencyLimit(),
 		MaxRetryAttempts:   3,
 		RetryDelay:         2 * time.Second,
 		ExponentialBackoff: false,
@@ -546,6 +602,16 @@ func (c Config) Validate(logger logger.Logger) error {
 		if sqsCfg, ok := c.DriverConfig.(SQSConfig); ok {
 			if sqsCfg.QueueURL == "" {
 				return errors.New("SQS queue URL is required")
+			}
+		}
+		return nil
+	case DriverNATS:
+		if natsCfg, ok := c.DriverConfig.(NATSConfig); ok {
+			if natsCfg.URL == "" {
+				return errors.New("NATS URL is required")
+			}
+			if natsCfg.StreamName == "" {
+				return errors.New("NATS stream name is required")
 			}
 		}
 		return nil
