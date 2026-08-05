@@ -76,6 +76,7 @@ func (w *Worker) Start(ctx context.Context, noOfWorkers int) error {
 		configuration.DriverRedis:    true,
 		configuration.DriverSQS:      true,
 		configuration.DriverDatabase: true,
+		configuration.DriverNATS:     true,
 	}
 
 	if !supportedDrivers[w.config.Driver] {

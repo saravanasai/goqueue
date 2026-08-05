@@ -13,6 +13,7 @@ import (
 	"github.com/saravanasai/goqueue/adapter/database"
 	"github.com/saravanasai/goqueue/adapter/dlq/factory"
 	"github.com/saravanasai/goqueue/adapter/memory"
+	"github.com/saravanasai/goqueue/adapter/nats"
 	"github.com/saravanasai/goqueue/adapter/redis"
 	"github.com/saravanasai/goqueue/adapter/sqs"
 	"github.com/saravanasai/goqueue/config"
@@ -85,6 +86,14 @@ func NewQueue(queueName string, cfg config.Config, shutdownTimeout time.Duration
 			logger.Error("Failed to initialize SQS store", "error", err)
 			queueCancel()
 			return nil, fmt.Errorf("failed to initialize SQS store: %w", err)
+		}
+	case config.DriverNATS:
+		var err error
+		store, err = nats.NewNATSStore(cfg, logger)
+		if err != nil {
+			logger.Error("Failed to initialize NATS store", "error", err)
+			queueCancel()
+			return nil, fmt.Errorf("failed to initialize NATS store: %w", err)
 		}
 	case config.DriverDatabase:
 		var err error
