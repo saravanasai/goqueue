@@ -127,9 +127,11 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 
 		// Try to get a job
 		job, err := w.store.Pop(w.queueName)
-		if err != nil {
-			// No jobs available, sleep briefly to avoid spinning
-			time.Sleep(100 * time.Millisecond)
+		// The database store reports an empty queue as a zero JobContext with a
+		// nil error, so waiting only on err left idle workers spinning on Pop
+		// (a transaction round trip per iteration). Wait on both outcomes.
+		if err != nil || job.Job == nil {
+			w.waitForNextPoll(ctx)
 			continue
 		}
 
@@ -139,13 +141,24 @@ func (w *Worker) workerLoop(ctx context.Context, workerID int) {
 			return
 		}
 
-		// Validate job
-		if job.Job == nil {
-			continue
-		}
-
 		// Process the job
 		w.processJobSafely(ctx, workerID, job)
+	}
+}
+
+// waitForNextPoll pauses an idle worker for the configured poll interval. It
+// returns early on context cancellation or shutdown so stopping stays prompt.
+func (w *Worker) waitForNextPoll(ctx context.Context) {
+	interval := w.config.PollInterval
+	if interval <= 0 {
+		interval = configuration.DefaultPollInterval
+	}
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	case <-w.shutdownCh:
 	}
 }
 

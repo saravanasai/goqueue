@@ -79,6 +79,20 @@ type Config struct {
 	Middlewares []middleware.Middleware
 	// JobTimeout is the default timeout for job execution (can be overridden per job)
 	JobTimeout time.Duration
+	// PollInterval is how long an idle worker waits after Pop finds no job
+	// (or fails) before polling again. Zero means DefaultPollInterval.
+	PollInterval time.Duration
+}
+
+// DefaultPollInterval is the idle poll pause used when Config.PollInterval is
+// unset. Short enough that a new job starts within a fraction of a second,
+// long enough that an idle worker costs a handful of queries per second.
+const DefaultPollInterval = 500 * time.Millisecond
+
+// WithPollInterval sets how long an idle worker waits between polls.
+func (c Config) WithPollInterval(interval time.Duration) Config {
+	c.PollInterval = interval
+	return c
 }
 
 // RedisConfig contains configuration options specific to the Redis driver.
